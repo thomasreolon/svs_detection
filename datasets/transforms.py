@@ -92,6 +92,8 @@ def letterbox(im, tg, new_shape=(128, 160)):
     top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=66)  # add darkgray(66) border
+    if len(im.shape)==2:
+        im[:,:,None]
 
     # Update Targets
     tg *= r
@@ -101,7 +103,7 @@ def letterbox(im, tg, new_shape=(128, 160)):
     # keep targets with height > 10 ############ IMPORTANT
     tg = tg[tg[:,3]>10]
 
-    return im[:,:,None], tg
+    return im, tg
 
 
 
@@ -120,7 +122,10 @@ def gettransforms_post(aug_post):
                 ])
 
     def fn(img, boxes, ids):
-        imgs,tgs = motaug([img], [{'boxes':torch.tensor(boxes), 'obj_ids':torch.tensor(ids)}])
+        img = F.to_pil_image((torch.tensor(img)/255).permute(2,0,1))
+        boxes = torch.tensor(boxes).view(-1,4)
+        boxes[:, 2:] += boxes[:, :2] # boxes from x1y1wh to x1y1x2y2 
+        imgs,tgs = motaug([img], [{'boxes':boxes, 'obj_ids':torch.tensor(ids)}]) # boxes from x1y1x2y2 to xcycwh
         return imgs[0], tgs[0]['boxes'], tgs[0]['obj_ids']
     return fn
 

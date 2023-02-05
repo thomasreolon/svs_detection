@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from collections import defaultdict
-from PIL import Image
+from PIL import Image, ImageDraw
 import cv2
 import pickle
 
@@ -72,7 +72,22 @@ class MOTDataset(torch.utils.data.Dataset):
         # augment flip rotate
         img, boxes, ids = self.aug_post(img, boxes, ids)
 
-        return info, img, boxes, ids
+        # YOLO loss needs 2 additional fields (batch_n, class_label)
+        targets = torch.cat((torch.zeros_like(boxes)[:,:2], boxes), dim=1)
+
+        return info, img, targets, ids
+
+    @staticmethod
+    def collate_fn(batch):
+        info, imgs, tgs, ids = zip(*batch)
+
+        for i, tg in enumerate(tgs):
+            tg[:, 0] = i
+        tgs = torch.cat(tgs, dim=0)     # concat & update batch value
+
+        imgs = torch.stack(imgs)   # concat tensors
+
+        return info, imgs, tgs, ids
 
     
 
@@ -152,8 +167,9 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train):
         images.append(img)
         boxes.append(boxs)
         obj_id.append(gt[:,4])
-        infos.append(f'{im_path.split("/")[-3]};{im_path.split("/")[-1][:6]};{is_train};{str(aug_color)}')
-    
+        tmp = {k:v for k,v in aug_color.items() if k not in {'gnoise_mask', 'gnoise_sigma'}}
+        infos.append(f'{im_path.split("/")[-3]};{im_path.split("/")[-1][:6]};{is_train};{str(tmp)}')
+
     # warm up simulator
     skip = max(1, int(len(images)//20))
     init = np.concatenate(images[::skip], axis=2).mean(axis=2)

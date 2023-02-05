@@ -32,12 +32,16 @@ class FastDataset(torch.utils.data.Dataset):
                 return dataset[idx]
             idx -= l
 
+    @staticmethod
+    def collate_fn(batch):
+        return MOTDataset.collate_fn(batch)
 
 
 
 def get_cache_path(args, v):
     if args.dont_cache: return None
     os.makedirs( f'{args.out_path}/ds_cache/', exist_ok=True)
+    noise = 'None' if v["aug_color"]["noise"] is None else ",".join([str(x) for x in v["aug_color"]["noise"]])
     return  f'{args.out_path}/ds_cache/ds' \
             f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
             f'_SEL[{v["select_video"]}]' \
@@ -46,7 +50,7 @@ def get_cache_path(args, v):
             f'_TRN[{int(v["is_train"])}]' \
             f'_COL[{v["aug_color"]["brightness"]},{v["aug_color"]["contrast"]},' \
                  f'{v["aug_color"]["saturation"]},{v["aug_color"]["sharpness"]},' \
-                 f'{v["aug_color"]["hue"]},{v["aug_color"]["gamma"]},{v["aug_color"]["noise"]}, ]' \
+                 f'{v["aug_color"]["hue"]},{v["aug_color"]["gamma"]},{noise}]' \
              '.pkl'
 
 
