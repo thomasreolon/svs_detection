@@ -1,25 +1,26 @@
 import os
 import numpy as np
 from collections import defaultdict
-from tqdm import tqdm
 from PIL import Image
 import cv2
+import pickle
 
 import torch
 
 from .forensor_sim import StaticSVS
-from .transforms import augment_color, gettransform_numpygrayscale, letterbox, gettransforms_motaugment
-
-
-
-
-
+from .transforms import (
+    augment_color,
+    get_mask,
+    letterbox, 
+    gettransform_numpygrayscale, 
+    gettransforms_motaugment
+)
 
 
 class MOTDataset(torch.utils.data.Dataset):
     """returns simulated frames of forensor & BBoxes"""
     IMG_SHAPE = 128,160
-    NO_AUGCOL = {'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5}
+    NO_AUGCOL = {'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}
 
     def __init__(self,
                  mot_path,              # path to Dataset
@@ -31,24 +32,37 @@ class MOTDataset(torch.utils.data.Dataset):
                  use_cars=False,        # detection of person & cars
                  is_train=True,         # from train or test dataset
                  aug_color=None,        # dict on color augmentation of video
-                 aug_affine=True        # use hflip/rotation
+                 aug_affine=True,       # use hflip/rotation
+
+                 cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
         super().__init__()
         self.aug_flip = gettransforms_motaugment() if aug_affine else None
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
 
+        if cache_path is None or not os.path.exists(cache_path):
+            # simulator:  frame --> motion_map
+            foresensor = StaticSVS(svs_close, svs_open, svs_hot, self.IMG_SHAPE) # TODO: option to use other types of SVS (simple & evolutive)
 
-        # simulator:  frame --> motion_map
-        foresensor = StaticSVS(svs_close, svs_open, svs_hot, self.IMG_SHAPE)
+            # load videos[(img_path, boxes)]
+            videos = load_data(mot_path, select_video, framerate, is_train, use_cars)
 
-        # load videos[(img_path, boxes)]
-        videos = load_data(mot_path, select_video, framerate, is_train, use_cars)
+            # applies aug_color to img ; applies foresensor
+            # data[(video_frame, svs_img, boxes, obj_ids)]
+            self.data = []
+            for video in videos:
+                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE)[2:]
+                self.data += samples[max(2, len(samples)//4):]
+            
+            if cache_path is not None:
+                # save in file_system
+                with open(cache_path, 'wb') as f_data:
+                    pickle.dump(self.data, f_data)
 
-        # applies aug_color to img ; applies foresensor
-        # data[(video_frame, svs_img, boxes, obj_ids)]
-        self.data = []
-        for video in videos:
-            self.data += simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE)[2:]
+        else:
+            # load from file_system
+            with open(cache_path, 'rb') as f_data:
+                self.data = pickle.load(f_data)
 
     def __len__(self):
         return self.data.__len__()
@@ -123,9 +137,12 @@ def simulate_svs(foresensor, data, aug_color, img_shape):
     boxes = []
     obj_id = []
     infos = []
-    for im_path, gt in data:
+    for i, (im_path, gt) in enumerate(data):
         # augment input video color
         img = Image.open(im_path)
+        if i==0:
+            mask, sigma = get_mask(img, aug_color['noise'])
+            aug_color.update({'gnoise_mask':mask, 'gnoise_sigma':sigma})
         img = augment_color(img, **aug_color)
         # img.show('fr')
         img = to_gray(img)
@@ -137,7 +154,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape):
         images.append(img)
         boxes.append(boxs)
         obj_id.append(gt[:,4])
-        infos.append(f'{im_path.split("/")[-3]}_{im_path.split("/")[-1][:6]}')
+        infos.append(f'{im_path.split("/")[-3]}_{im_path.split("/")[-1][:6]}_{str(aug_color)}')
     
     # warm up simulator
     skip = max(1, int(len(images)//20))

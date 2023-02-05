@@ -7,11 +7,45 @@ import cv2
 import torch
 import torchvision.transforms.functional as F
 import torchvision.transforms as T
-from torchvision.ops.misc import interpolate
 
 
 
-def augment_color(img, brightness, contrast, saturation, sharpness, hue, gamma):
+def gaussian_noise(img, mask, sigma):
+    # make it a tensor
+    img = F.to_tensor(img)
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+
+    # add noise
+    noise = F.gaussian_blur(sigma * torch.randn_like(img), 5)
+    noise = noise * mask
+    img = (img+noise).clamp(0,1)
+
+    # convert to PIL
+    if img.dtype != dtype:
+        img = img.to(dtype)
+    img = F.to_pil_image(img)
+        
+    return img
+
+def get_mask(img, position):
+    if position is None: return None, None
+    # mask
+    img = F.to_tensor(img).mean(dim=0)
+    y,x = int(position[0]*img.shape[0]), int(position[1]*img.shape[1])
+    color = img[y,x]
+    mask1 = (img-color)**2 < 0.05**2
+    h,w = int(position[2]*img.shape[0]), int(position[2]*img.shape[1])
+    mask2 = torch.zeros_like(mask1)
+    mask2[max(0,y-h):y+h, max(0,x-w):x+w] = True
+    # sigma
+    mask = mask1 & mask2
+    sigma = 5. + 30*(1- mask.sum()/mask.numel())*position[3]
+
+    return mask[None], sigma.item() / 255
+
+def augment_color(img, brightness, contrast, saturation, sharpness, hue, gamma, gnoise_mask=None, gnoise_sigma=None, **kw):
     """
     Args
         img: PIL Image
@@ -26,6 +60,9 @@ def augment_color(img, brightness, contrast, saturation, sharpness, hue, gamma):
             var = min(1,max(0,var))
             factor = base + var*r
             img = fn(img, factor)
+
+    if gnoise_mask is not None:
+        img = gaussian_noise(img, gnoise_mask, gnoise_sigma)
 
     return img
 

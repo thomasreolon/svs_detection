@@ -1,43 +1,139 @@
-
-
+import os
+import numpy as np
 import torch
+from tqdm import tqdm
+
 from .mot_dataset_svs import MOTDataset
 
 
 
 
-class JointStaticMOT(torch.utils.data.Dataset):
+class FastDataset(torch.utils.data.Dataset):
     """Wrapper To Load Multiple Dataset Faster"""
 
     def __init__(self, 
                  args,              # NameSpace
                  is_train,          # train or test folder
-                 sim_params,        # [(close,open,hot), (close2,open2,hot2), ..]
-                 framerates,        # [10, 15, ..]
+                 aug_affine,        # augment post svs
                  ):
         super().__init__()
-
-        videos = ...
-        aug = [{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5}] +( [{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2}] if is_train else [{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5}])
-
-        keys = get_combinations(videos, sim_params, framerates)
+        dataset_configs = get_configs(args, is_train, aug_affine)
+        self.datasets = {k:MOTDataset(**v, cache_path=get_cache_path(args, v)) for k,v in tqdm(dataset_configs.items())}
 
 
-        for col in [{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5}, {'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2}]:
-
-                    key1 = f'{cl}-{op}-{ho}'
-                    key2 = f'{vid}-{fr}-{False}-True-{list(col.values())}'
+    def __len__(self):
+        return sum([len(x) for x in self.datasets.values()])
 
 
-
-
-
-def get_combinations():
-    pass
+    def __getitem__(self, idx):
+        for dataset in self.datasets.values():
+            l = len(dataset)
+            if idx < l:
+                return dataset[idx]
+            idx -= l
 
 
 
-def try_load_from_cache(da_cache_path, )
+
+def get_cache_path(args, v):
+    if args.dont_cache: return None
+    os.makedirs( f'{args.out_path}/ds_cache/', exist_ok=True)
+    return  f'{args.out_path}/ds_cache/ds' \
+            f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
+            f'_SEL[{v["select_video"]}]' \
+            f'_FRM[{v["framerate"]}]' \
+            f'_CAR[{int(v["use_cars"])}]' \
+            f'_TRN[{int(v["is_train"])}]' \
+            f'_COL[{v["aug_color"]["brightness"]},{v["aug_color"]["contrast"]},' \
+                 f'{v["aug_color"]["saturation"]},{v["aug_color"]["sharpness"]},' \
+                 f'{v["aug_color"]["hue"]},{v["aug_color"]["gamma"]},{v["aug_color"]["noise"]}, ]' \
+             '.pkl'
+
+
+def get_configs(args, is_train, aug_affine):
+    np.random.seed(seed=42)
+    def rand(): return 0.5 + (-.1+np.random.rand())**2 - (-.1+np.random.rand())**2
+    if is_train:
+        configs =  {
+            'all_videos_MOT':{
+                # all videos from MOT17 & synthMOT without augmentations
+                'select_video':'-',
+                'is_train':True,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':aug_affine   
+            },
+            'all_videos_NEW':{
+                # all videos from TOMDataset without augmentations
+                'select_video':'vid',
+                'is_train':True,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':aug_affine   
+            },
+            'darker':{
+                'select_video':'vid_1',
+                'is_train':True,  
+                'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                'aug_affine':aug_affine   
+            },
+            'noise':{
+                'select_video':'vid_1',
+                'is_train':True,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
+                'aug_affine':aug_affine   
+            },
+            'mixed1':{
+                'select_video':'vid_5',
+                'is_train':True,  
+                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+                'aug_affine':aug_affine   
+            },
+            'mixed2':{
+                'select_video':'vid_5',
+                'is_train':True,  
+                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+                'aug_affine':aug_affine   
+            },
+            'mixed3':{
+                'select_video':'vid_5',
+                'is_train':True,  
+                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+                'aug_affine':aug_affine   
+            },
+        }
+    else:
+        configs =  {
+            'all videos':{
+                'select_video':'',
+                'is_train':False,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':False   
+            },
+            'darker':{
+                'select_video':'',
+                'is_train':False,  
+                'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                'aug_affine':False   
+            },
+            'noise':{
+                'select_video':'',
+                'is_train':False,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.6)}, 
+                'aug_affine':False   
+            },
+        }
+    for v in configs.values:
+        v.update({
+            'mot_path':args.mot_path,
+            'svs_close':args.svs_close, 
+            'svs_open':args.svs_open,  
+            'svs_hot':args.svs_hot,   
+            'framerate':args.framerate, 
+            'use_cars':args.use_cars,
+        })
+
+    return configs
+         
+
 
 
 
