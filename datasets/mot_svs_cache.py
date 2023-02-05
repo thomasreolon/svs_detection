@@ -121,7 +121,7 @@ def get_configs(args, is_train, aug_affine):
                 'aug_affine':False   
             },
         }
-    for v in configs.values:
+    for v in configs.values():
         v.update({
             'mot_path':args.mot_path,
             'svs_close':args.svs_close, 

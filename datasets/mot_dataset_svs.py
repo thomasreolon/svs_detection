@@ -51,14 +51,13 @@ class MOTDataset(torch.utils.data.Dataset):
             # data[(video_frame, svs_img, boxes, obj_ids)]
             self.data = []
             for video in videos:
-                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE)[2:]
+                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE, is_train)[2:]
                 self.data += samples[max(2, len(samples)//4):]
             
             if cache_path is not None:
                 # save in file_system
                 with open(cache_path, 'wb') as f_data:
                     pickle.dump(self.data, f_data)
-
         else:
             # load from file_system
             with open(cache_path, 'rb') as f_data:
@@ -130,7 +129,7 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
     return data
 
 
-def simulate_svs(foresensor, data, aug_color, img_shape):
+def simulate_svs(foresensor, data, aug_color, img_shape, is_train):
     # prep images for simulator
     to_gray = gettransform_numpygrayscale()
     images = []
@@ -154,7 +153,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape):
         images.append(img)
         boxes.append(boxs)
         obj_id.append(gt[:,4])
-        infos.append(f'{im_path.split("/")[-3]}_{im_path.split("/")[-1][:6]}_{str(aug_color)}')
+        infos.append(f'{im_path.split("/")[-3]};{im_path.split("/")[-1][:6]};{is_train};{str(aug_color)}')
     
     # warm up simulator
     skip = max(1, int(len(images)//20))
