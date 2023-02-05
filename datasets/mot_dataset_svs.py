@@ -13,7 +13,7 @@ from .transforms import (
     get_mask,
     letterbox, 
     gettransform_numpygrayscale, 
-    gettransforms_motaugment
+    gettransforms_post
 )
 
 
@@ -32,12 +32,12 @@ class MOTDataset(torch.utils.data.Dataset):
                  use_cars=False,        # detection of person & cars
                  is_train=True,         # from train or test dataset
                  aug_color=None,        # dict on color augmentation of video
-                 aug_affine=True,       # use hflip/rotation
+                 aug_affine=True,       # if true use hflip/shift,   else just normalize
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
         super().__init__()
-        self.aug_flip = gettransforms_motaugment() if aug_affine else None
+        self.aug_post = gettransforms_post(aug_affine)
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
 
         if cache_path is None or not os.path.exists(cache_path):
@@ -70,8 +70,7 @@ class MOTDataset(torch.utils.data.Dataset):
         info, img, boxes, ids = self.data[idx]
 
         # augment flip rotate
-        if self.aug_flip is not None:
-            img, boxes, ids = self.aug_flip(img, boxes, ids)
+        img, boxes, ids = self.aug_post(img, boxes, ids)
 
         return info, img, boxes, ids
 

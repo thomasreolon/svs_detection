@@ -1,7 +1,11 @@
 from PIL import Image
+import numpy as np
+import cv2
+import torchvision.transforms.functional as F
+
 from datasets.transforms import augment_color, get_mask
 
-def visualize_prediction():
+def visualize_prediction(ori_img, svs_img, gt_bb, pred_bb):
     pass
 
 
@@ -23,5 +27,8 @@ def load_original(args, info):
     # augment color
     img = Image.open(frame_path)
     img = augment_color(img, **aug_color)
+
+    # to numpy
+    img = (F.to_tensor(img).permute(1,2,0)*255).numpy().astype(np.uint8)
 
     return img

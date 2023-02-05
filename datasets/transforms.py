@@ -105,15 +105,22 @@ def letterbox(im, tg, new_shape=(128, 160)):
 
 
 
-def gettransforms_motaugment():
-    motaug = MotCompose([
-                MotRandomHorizontalFlip(),
-                FixedMotRandomShift(),
-                MotToTensor(),  # also scales from HW to [01]
-                MotNormalize([0.1, 0.1, 0.1], [0.9, 0.9, 0.9])
-            ])
+def gettransforms_post(aug_post):
+    if aug_post:
+        motaug = MotCompose([
+                    MotRandomHorizontalFlip(),
+                    FixedMotRandomShift(),
+                    MotToTensor(),  # also scales from HW to [01]
+                    MotNormalize([0.1], [0.9])
+                ])
+    else:
+        motaug = MotCompose([
+                    MotToTensor(),  # also scales from HW to [01]
+                    MotNormalize([0.1], [0.9])
+                ])
+
     def fn(img, boxes, ids):
-        imgs,tgs = motaug([img], [{'boxes':boxes, 'obj_ids':ids}])
+        imgs,tgs = motaug([img], [{'boxes':torch.tensor(boxes), 'obj_ids':torch.tensor(ids)}])
         return imgs[0], tgs[0]['boxes'], tgs[0]['obj_ids']
     return fn
 
