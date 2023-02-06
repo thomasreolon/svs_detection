@@ -18,38 +18,72 @@ class MLP(nn.Module):
 
 class EnhanceFeatures(nn.Module):
     """CNN"""
-    def __init__(self) -> None:
+    def __init__(self, ch_in, out_ch, hw) -> None:
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(1,4,7),
+        self.hw = hw
+        self.cnn1 = nn.Sequential(
+            nn.Conv2d(ch_in,16,7),
             nn.ReLU(),
-            nn.Conv2d(4,4,7, groups=4),
-            nn.Conv2d(4,4,1),
+            nn.Conv2d(16,16,7, groups=4),
+            nn.Conv2d(16,out_ch//2,1),
+            nn.ReLU()
+        )
+        self.cnn2 = nn.Sequential(
+            nn.Conv2d(ch_in,16,3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16,16,3, groups=4, padding=1),
+            nn.Conv2d(16,out_ch//2,1),
             nn.ReLU()
         )
     def forward(self, svs_img):
-        y = self.model(svs_img)
-        return F.adaptive_avg_pool2d(y, (16,32))
-
+        y1 = self.cnn1(svs_img)
+        y1 = F.adaptive_avg_pool2d(y1, self.hw)
+        y2 = self.cnn2(F.adaptive_avg_pool2d(svs_img, self.hw))
+        return torch.cat((y1,y2), dim=1)
 
 
 class SimpleNN(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
-    def __init__(self) -> None:
+    HW = [16,32] # low dim map size
+    CH = 2+14
+
+    def __init__(self, ch_in=1):
         super().__init__()
-        anchors = torch.tensor([[4,4]])
+        anchors = [[1,4,  8,8,  1,1]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        hw = self.HW[0] * self.HW[1]
 
         self.model = nn.ModuleList([
-            MLP(512, 1024, 1024, 3),
-            EnhanceFeatures(),
-            Detect(1, anchors, [6])
+            MLP(hw, 2*hw, 2*hw, 3), ### CHin_Must==1 TODO:change
+            EnhanceFeatures(ch_in, (self.CH-2), self.HW),
+            nn.Sequential(nn.Conv2d(self.CH, self.CH*2, 3, 1, 1), nn.ReLU()),
+            Detect(1, anchors, [self.CH*2]),
         ])
-        self.model[-1].stride = torch.tensor([128/16, 160/32])
+        self.model[-1].stride = torch.tensor([128/self.HW[0], 160/self.HW[1]])
+
+        self._init_weights()
 
     def forward(self, svs_img):
-        svs_img_unrolled = F.adaptive_avg_pool2d(svs_img, (16,32)).flatten(1) #B,CHW
-        y1 = self.model[0](svs_img_unrolled).view(-1, 2,16,32)
+        h,w = self.HW
+        # FFNN (this is really heavy...)
+        svs_img_unrolled = F.adaptive_avg_pool2d(svs_img, (h,w)).flatten(1) #B,CHW
+        y1 = self.model[0](svs_img_unrolled).view(-1, 2,h,w)
+        
+        # Multi Scale CNN (more or less...)
         y2 = self.model[1](svs_img)
-        logits = [torch.cat((y1,y2), dim=1)] #B,6,16,32
-        return self.model[2](logits)
 
+        # CNN to combine features & Detection HEAD
+        y_cat = torch.cat((y1,y2), dim=1) #B,6,16,32
+        y_cat = self.model[2](y_cat)
+        return self.model[3]([y_cat])
+
+    @torch.no_grad()
+    def _init_weights(self):
+        def get_eye(d1,d2):
+            w = torch.cat([torch.eye(d2) for _ in range(int(d1/d2))], dim=0)
+            return w + torch.randn_like(w) * 1e-3
+        for name, param in self.named_parameters():
+            if 'model.0' in name:
+                if 'weight' in name: # MLP.weight
+                    param.copy_(get_eye(*param.shape))
+                else:                # MLP.bias
+                    param.copy_(torch.zeros_like(param))

@@ -18,7 +18,7 @@ class FastDataset(torch.utils.data.Dataset):
                  ):
         super().__init__()
         dataset_configs = get_configs(args, is_train, aug_affine)
-        self.datasets = {k:MOTDataset(**v, cache_path=get_cache_path(args, v)) for k,v in tqdm(dataset_configs.items())}
+        self.datasets = {k:MOTDataset(**v, cache_path=get_cache_path(args, v)) for k,v in tqdm(dataset_configs.items(),desc='loading dataset')}
 
 
     def __len__(self):
@@ -26,11 +26,19 @@ class FastDataset(torch.utils.data.Dataset):
 
 
     def __getitem__(self, idx):
-        for dataset in self.datasets.values():
+        for variant, dataset in self.datasets.items():
             l = len(dataset)
             if idx < l:
-                return dataset[idx]
+                res = dataset[idx]
+                # add 'video variant' information to info
+                res[0] = res[0]+f';{variant}'
+                return res
             idx -= l
+
+    def drop(self, names):
+        for n in names:
+            if n in self.datasets:
+                del self.datasets[n]
 
     @staticmethod
     def collate_fn(batch):
@@ -40,9 +48,9 @@ class FastDataset(torch.utils.data.Dataset):
 
 def get_cache_path(args, v):
     if args.dont_cache: return None
-    os.makedirs( f'{args.out_path}/ds_cache/', exist_ok=True)
+    os.makedirs( f'{args.out_path}/_ds_cache/', exist_ok=True)
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([str(x) for x in v["aug_color"]["noise"]])
-    return  f'{args.out_path}/ds_cache/ds' \
+    return  f'{args.out_path}/_ds_cache/ds' \
             f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
             f'_SEL[{v["select_video"]}]' \
             f'_FRM[{v["framerate"]}]' \

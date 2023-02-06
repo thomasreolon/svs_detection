@@ -143,15 +143,16 @@ class ComputeLoss:
             'label_smoothing': False,
             'fl_gamma':0,
             'cls_pw':0.5,
-            'obj_pw':1.5,
+            'obj_pw':3.,
             'anchor_t': 4,
             'lrf':1/8,
+            'pos_weight': 3.,
         }
-        self.hyp = h
 
         # Define criteria
+        self.cl1, self.cl2 = nn.L1Loss(reduction='none'), nn.BCEWithLogitsLoss(reduction='none') # counting losses
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
-        BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
+        BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), reduction='none')
 
         # Class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
         self.cp, self.cn = smooth_BCE(eps=h.get('label_smoothing', 0.0))  # positive, negative BCE targets
@@ -164,18 +165,33 @@ class ComputeLoss:
         m = de_parallel(model).model[-1]  # Detect() module
         self.balance = {3: [4.0, 1.0, 0.4]}.get(m.nl, [4.0, 1.0, 0.25, 0.06, 0.02])  # P3-P7
         self.ssi = 0  # stride 16 index
-        self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 1.0, h, autobalance
+        ### NOTE modified gr so that even if BB is way off, obj_loss is computed (useful since small grid & 1 anchor)
+        self.BCEcls, self.BCEobj, self.gr, self.hyp, self.autobalance = BCEcls, BCEobj, 0.1, h, autobalance
         self.na = m.na  # number of anchors
         self.nc = m.nc  # number of classes
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
 
-    def __call__(self, p, targets):  # predictions, targets
+    def __call__(self, p, targets, counts):  # predictions, targets
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
         tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
+        
+        bs = p[0].shape[0]
+        lobj_items = torch.zeros(bs, device=self.device)  # obj loss for logging
+        lbox_items = torch.zeros(bs, device=self.device)  # box loss for logging
+
+        # Count Loss
+        gt_count = torch.tensor([len(targets[targets==i]) for i in range(bs)], device=counts.device, dtype=counts.dtype)
+        c_loss1  = self.cl1(counts[:,1], gt_count) / (gt_count+2)
+        pr_p = counts[:,0]
+        gt_p = (gt_count>0).float()
+        c_loss2 = (pr_p-gt_p)**2 # maybe not the smartest but does its job
+        lcnt = c_loss1+c_loss2
+        lcnt_items = lcnt.detach()   # count loss for logging
+        lcnt = lcnt.mean()
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
@@ -193,6 +209,9 @@ class ComputeLoss:
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
+
+                tmp=[torch.nan_to_num(1-iou[b==i].mean().detach(), -1).view(1) for i in range(bs)]
+                lbox_items += torch.cat(tmp)
 
                 # Objectness
                 iou = iou.detach().clamp(0).type(tobj.dtype)
@@ -214,6 +233,11 @@ class ComputeLoss:
                 #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
 
             obji = self.BCEobj(pi[..., 4], tobj)
+
+            tmp=[obji[i].mean().detach().view(1) for i in range(bs)]
+            lobj_items += torch.cat(tmp)
+
+            obji = obji.mean()
             lobj += obji * self.balance[i]  # obj loss
             if self.autobalance:
                 self.balance[i] = self.balance[i] * 0.9999 + 0.0001 / obji.detach().item()
@@ -225,7 +249,7 @@ class ComputeLoss:
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
 
-        return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+        return (lbox + lobj + lcls + lcnt) * bs, torch.stack((lbox_items*self.hyp['box'], lobj_items*self.hyp['obj'], lcnt_items), dim=1)
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)

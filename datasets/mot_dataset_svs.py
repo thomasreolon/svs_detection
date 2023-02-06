@@ -75,7 +75,7 @@ class MOTDataset(torch.utils.data.Dataset):
         # YOLO loss needs 2 additional fields (batch_n, class_label)
         targets = torch.cat((torch.zeros_like(boxes)[:,:2], boxes), dim=1)
 
-        return info, img, targets, ids
+        return [info, img, targets, ids]
 
     @staticmethod
     def collate_fn(batch):

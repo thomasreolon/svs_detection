@@ -93,7 +93,7 @@ def letterbox(im, tg, new_shape=(128, 160)):
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=66)  # add darkgray(66) border
     if len(im.shape)==2:
-        im[:,:,None]
+        im = im[:,:,None]
 
     # Update Targets
     tg *= r
