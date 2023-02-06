@@ -4,12 +4,13 @@ from torch.utils.data import DataLoader
 
 from configs.defaults import get_args_parser
 from datasets.mot_svs_cache import FastDataset
-from utils.visualize import StatsLogger
-from models.mlp import SimpleNN
+from utils import StatsLogger, init_seeds
+from models.mlp import SimpleNN   # TODO: support more models,    simulator
 from models._loss import ComputeLoss
 
 args = get_args_parser().parse_args()
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+init_seeds(42)
 
 model = SimpleNN().to(device)
 loss_fn = ComputeLoss(model)
@@ -78,7 +79,7 @@ if not args.skip_train:
         if epoch==args.epochs*9//10:
             logger.log('>> changing dataset \n')
             dataset.drop(['all_videos_MOT']) # change dataset dropping MOT17/Synth videos
-            tr_loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn, shuffle=True)
+            tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
 
     torch.save(model.state_dict(), args.out_path+'/model.pt')

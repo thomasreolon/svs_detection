@@ -167,15 +167,20 @@ class StatsLogger():
 
     def log_stats(self):
         self.log('_____________STATS____________\n')
+        cum = []
         for vid, (cm, c_err) in self.stats.items():
             acc = cm.diagonal().sum() / cm.sum()
             pr = cm[1,1] / (cm[:,1].sum()+1e-8)
             rc = cm[1,1] / (cm[1,:].sum()+1e-8)
             c_err = np.array(c_err)
             em, es = c_err.mean(), c_err.std()
-            text = f'[{vid}] Detection[accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}]   Count[meanerr={em:.2f}  std={es:.1e}]\n'
+            text = f'[{vid}] Detection[accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}]  Count[meanerr={em:.2f}  std={es:.1e}]\n'
             self.log(text)
-
+            if 'test' in vid:
+                cum.append([acc,pr,rc])
+        acc,pr,rc = np.array(cum).mean(axis=0).tolist()
+        text = f'>> Averaged Stats For Testset [accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}]\n'
+        self.log(text)
 
 def safe_box_cxcywh_to_xyxy(x, m_ = 1e-2):
     m_ = torch.tensor([m_],device=x.device,dtype=x.dtype)
