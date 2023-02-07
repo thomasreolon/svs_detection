@@ -50,12 +50,14 @@ def get_cache_path(args, v):
     if args.dont_cache: return None
     os.makedirs( f'{args.out_path}/_ds_cache/', exist_ok=True)
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([str(x) for x in v["aug_color"]["noise"]])
+    simulator = '' if v["simulator"] == 'static' else f'_SIM[{v["simulator"]}]'
     return  f'{args.out_path}/_ds_cache/ds' \
             f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
             f'_SEL[{v["select_video"]}]' \
             f'_FRM[{v["framerate"]}]' \
             f'_CAR[{int(v["use_cars"])}]' \
             f'_TRN[{int(v["is_train"])}]' \
+            f'{simulator}' \
             f'_COL[{v["aug_color"]["brightness"]},{v["aug_color"]["contrast"]},' \
                  f'{v["aug_color"]["saturation"]},{v["aug_color"]["sharpness"]},' \
                  f'{v["aug_color"]["hue"]},{v["aug_color"]["gamma"]},{noise}]' \
@@ -141,6 +143,7 @@ def get_configs(args, is_train, aug_affine):
             'svs_hot':args.svs_hot,   
             'framerate':args.framerate, 
             'use_cars':args.use_cars,
+            'simulator':args.simulator,
         })
 
     return configs

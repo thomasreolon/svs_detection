@@ -2,47 +2,9 @@ import torch.nn.functional as F
 import torch, torch.nn as nn
 
 from ._head import Detect
+from ._blocks import MLP, EnhanceFeatures
 
-class MLP(nn.Module):
-    """FFNN"""
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
-        super().__init__()
-        self.num_layers = num_layers
-        h = [hidden_dim] * (num_layers - 1)
-        self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim]))
-
-    def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
-        return x
-
-class EnhanceFeatures(nn.Module):
-    """CNN"""
-    def __init__(self, ch_in, out_ch, hw) -> None:
-        super().__init__()
-        self.hw = hw
-        self.cnn1 = nn.Sequential(
-            nn.Conv2d(ch_in,16,7),
-            nn.ReLU(),
-            nn.Conv2d(16,16,7, groups=4),
-            nn.Conv2d(16,out_ch//2,1),
-            nn.ReLU()
-        )
-        self.cnn2 = nn.Sequential(
-            nn.Conv2d(ch_in,16,3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16,16,3, groups=4, padding=1),
-            nn.Conv2d(16,out_ch//2,1),
-            nn.ReLU()
-        )
-    def forward(self, svs_img):
-        y1 = self.cnn1(svs_img)
-        y1 = F.adaptive_avg_pool2d(y1, self.hw)
-        y2 = self.cnn2(F.adaptive_avg_pool2d(svs_img, self.hw))
-        return torch.cat((y1,y2), dim=1)
-
-
-class SimpleNN(nn.Module):
+class MLPDetector(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
     HW = [16,32] # low dim map size
     CH = 2+14

@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 
 class StaticSVS():
+    name = 'static'
     def __init__(self, d_close=1, d_open=3, d_hot=5, img_shape=(128,160)):
         # Algorithm parameters
         self.erosion_kernel = np.ones((3, 3), np.uint8)
@@ -25,6 +26,7 @@ class StaticSVS():
     def __call__(self, frame):
         Threshold_H, Threshold_L = self.Threshold_H, self.Threshold_L
         open, close, dhot = self.open, self.close, self.dhot
+        frame = frame[:,:,0]
 
         # activations "pixel became a lot brighter"
         tmpH = (frame - Threshold_H) > 0  # pixel open
@@ -45,5 +47,5 @@ class StaticSVS():
         heat_map = cv2.erode(heat_map, self.erosion_kernel, iterations=1)
         heat_map = heat_map.astype(np.uint8)
 
-        return heat_map
+        return heat_map[:,:,None]
 

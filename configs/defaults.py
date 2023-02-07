@@ -11,8 +11,8 @@ def get_args_parser():
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
     
     # Model Settings
-    parser.add_argument('--architecture', default='yolov8s', type=str,          help='yolov8s, CNN, MLP, phinet')
-    parser.add_argument('--sensor', default='static', type=str,                 help='static, simple, evolution')
+    parser.add_argument('--architecture', default='mlp2', type=str,          help='yolo, mlp1, mlp2, phinet')
+    parser.add_argument('--simulator', default='static', type=str,                 help='static, simple, evolution')
 
     # Configuration Setting
     parser.add_argument('--framerate', default=4, type=int)

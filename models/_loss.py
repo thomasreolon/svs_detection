@@ -137,9 +137,9 @@ class ComputeLoss:
     def __init__(self, model, autobalance=False):
         device = next(model.parameters()).device  # get model device
         h = {
-            'box': 3,
-            'cls': 3 / 80,
-            'obj': 0.1,
+            'box': 2,
+            'cls': 1,
+            'obj': 1,
             'label_smoothing': False,
             'fl_gamma':0,
             'cls_pw':0.5,
@@ -185,10 +185,11 @@ class ComputeLoss:
 
         # Count Loss
         gt_count = torch.tensor([len(targets[targets==i]) for i in range(bs)], device=counts.device, dtype=counts.dtype)
-        c_loss1  = self.cl1(counts[:,1], gt_count) / (gt_count+2)
         pr_p = counts[:,0]
         gt_p = (gt_count>0).float()
         c_loss2 = (pr_p-gt_p)**2 # maybe not the smartest but does its job
+        pr_count = counts[:,1] + (counts[:,0].detach()>0).float()
+        c_loss1  = self.cl1(pr_count, gt_count) / (gt_count+2)
         lcnt = c_loss1+c_loss2
         lcnt_items = lcnt.detach()   # count loss for logging
         lcnt = lcnt.mean()
@@ -247,9 +248,9 @@ class ComputeLoss:
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
-        bs = tobj.shape[0]  # batch size
+        mlt = tobj.shape[0]**0.5  # batch size
 
-        return (lbox + lobj + lcls + lcnt) * bs, torch.stack((lbox_items*self.hyp['box'], lobj_items*self.hyp['obj'], lcnt_items), dim=1)
+        return (lbox + lobj + lcls + lcnt) * mlt, torch.stack((lobj_items*self.hyp['obj'], lbox_items*self.hyp['box'], lcnt_items), dim=1)
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)

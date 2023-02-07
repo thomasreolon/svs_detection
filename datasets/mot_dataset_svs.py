@@ -7,7 +7,7 @@ import pickle
 
 import torch
 
-from .forensor_sim import StaticSVS
+from simulators import get_simulator
 from .transforms import (
     augment_color,
     get_mask,
@@ -33,16 +33,18 @@ class MOTDataset(torch.utils.data.Dataset):
                  is_train=True,         # from train or test dataset
                  aug_color=None,        # dict on color augmentation of video
                  aug_affine=True,       # if true use hflip/shift,   else just normalize
+                 simulator='static',    # which simulator to use
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
         super().__init__()
         self.aug_post = gettransforms_post(aug_affine)
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
+        Simulator = get_simulator(simulator)
 
         if cache_path is None or not os.path.exists(cache_path):
             # simulator:  frame --> motion_map
-            foresensor = StaticSVS(svs_close, svs_open, svs_hot, self.IMG_SHAPE) # TODO: option to use other types of SVS (simple & evolutive)
+            foresensor = Simulator(svs_close, svs_open, svs_hot, self.IMG_SHAPE) # TODO: option to use other types of SVS (simple & evolutive)
 
             # load videos[(img_path, boxes)]
             videos = load_data(mot_path, select_video, framerate, is_train, use_cars)
@@ -177,7 +179,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train):
     foresensor.init_video(init, std)
 
     # simulate
-    svs_images = [foresensor(img[:,:,0])[:,:,None] for img in images]
+    svs_images = [foresensor(img) for img in images]
 
     # for s,i,b in zip(svs_images, images, boxes):
     #     for box in b:

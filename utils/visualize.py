@@ -39,6 +39,7 @@ class StatsLogger():
         text = f'>> Total Time: {h}h {m}m {s}s\n'
         self.logtxt.write(text)
         self.logtxt.flush()
+        return text[15:-1]
 
     def visualize(self, info, svs_img, gt_boxes, gt_ids, pred_boxes, heat, count):
         """generates visualization with (ground truth) and (predictions)
@@ -62,7 +63,7 @@ class StatsLogger():
         # rescale heatmap
         heat = np.uint8((heat*255)[...,None].expand(-1,-1,3))
         heat = cv2.resize(heat, (self.VIS_SIZE[1], self.VIS_SIZE[0]))
-        heat[heat[...,0]>self.args.detect_thresh*255] = (0,0,200)
+        heat[heat[...,0]>.6*255] = (0,0,200)
 
         # print frame infos
         boxes = np.ones_like(heat)*255  # TODO: view what?
@@ -77,6 +78,7 @@ class StatsLogger():
 
     def save_cfg(self):
         "write experiment configs on file"
+        if self.args.exp_name == '': return
         args = vars(self.args)
         with open(f'{self.out_path[:-10]}cfg.json', 'w') as fout:
             json.dump(args, fout, indent=2)
