@@ -43,14 +43,8 @@ class Detect(nn.Module):
                     self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
 
                 y = x[i].sigmoid()
-                if self.inplace:
-                    y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
-                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
-                else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
-                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
-                    xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
-                    wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
-                    y = torch.cat((xy, wh, conf), 4)
+                y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
+                y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
                 z.append(y.view(bs, -1, self.no))
         
         # if there is an object, how many there are
@@ -58,8 +52,10 @@ class Detect(nn.Module):
         w = c[:,:,2].sigmoid()
         w = w / w.sum(dim=1).view(-1,1)
         c = torch.stack(((c[:,:,0].sigmoid()*w).sum(1), (c[:,:,1]*w).sum(1)), dim=1) # bs, 2
+        if not self.training:
+            c[:,1] += (c[:,0]>0.5).float() # for how loss is implemented
 
-        return (x,c) if self.training else (torch.cat(z, 1),None,c) if self.export else (torch.cat(z, 1), x, c)
+        return (None,x,c) if self.training else (torch.cat(z, 1),None,c) if self.export else (torch.cat(z, 1), x, c)
 
     def _make_grid(self, nx=20, ny=20, i=0):
         d = self.anchors[i].device

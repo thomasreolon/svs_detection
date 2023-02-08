@@ -5,6 +5,7 @@
 import math
 import torch
 import torch.nn as nn
+import utils.debugging as D
 
 def de_parallel(model):
     # De-parallelize a model: returns single-GPU model if model is of type DP or DDP
@@ -137,10 +138,11 @@ class ComputeLoss:
     def __init__(self, model, autobalance=False):
         device = next(model.parameters()).device  # get model device
         h = {
-            'box': 2,
+            'box': 1.5,
             'cls': 1,
-            'obj': 1,
-            'label_smoothing': False,
+            'obj': 3,
+            'label_smoothing': True,
+            'box_area_wh': False,
             'fl_gamma':0,
             'cls_pw':0.5,
             'obj_pw':3.,
@@ -177,7 +179,7 @@ class ComputeLoss:
         lcls = torch.zeros(1, device=self.device)  # class loss
         lbox = torch.zeros(1, device=self.device)  # box loss
         lobj = torch.zeros(1, device=self.device)  # object loss
-        tcls, tbox, indices, anchors = self.build_targets(p, targets)  # targets
+        tcls, tbox, indices, anchors, tgs = self.build_targets(p, targets)  # targets
         
         bs = p[0].shape[0]
         lobj_items = torch.zeros(bs, device=self.device)  # obj loss for logging
@@ -204,15 +206,24 @@ class ComputeLoss:
                 # pxy, pwh, _, pcls = pi[b, a, gj, gi].tensor_split((2, 4, 5), dim=1)  # faster, requires torch 1.8.0
                 pxy, pwh, _, pcls = pi[b, a, gj, gi].split((2, 2, 1, self.nc), 1)  # target-subset of predictions
 
+                # - Regression: penalize different scale BB
+                coeff=1
+                if self.hyp['box_area_wh']:
+                    anchor_wh = anchors[i] / torch.tensor([pi.shape[3], pi.shape[2]],device=anchors[i].device)      # N,2 * 2
+                    anchor_wh = anchor_wh[:,0]*anchor_wh[:,1]
+                    targ_wh = tgs[i][:,4]*tgs[i][:,5]
+                    coeff = torch.min(anchor_wh/targ_wh, targ_wh/anchor_wh)
                 # Regression
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
-                lbox += (1.0 - iou).mean()  # iou loss
+                lbox += ((1.0 - iou)*coeff).mean()  # iou loss
 
                 tmp=[torch.nan_to_num(1-iou[b==i].mean().detach(), -1).view(1) for i in range(bs)]
                 lbox_items += torch.cat(tmp)
+
+                if i==0:D.debug_regression(b==0, pbox, tbox[i])
 
                 # Objectness
                 iou = iou.detach().clamp(0).type(tobj.dtype)
@@ -229,9 +240,9 @@ class ComputeLoss:
                     t[range(n), tcls[i]] = self.cp
                     lcls += self.BCEcls(pcls, t)  # BCE
 
-                # Append targets to text file
-                # with open('targets.txt', 'a') as file:
-                #     [file.write('%11.5g ' * 4 % tuple(x) + '\n') for x in torch.cat((txy[i], twh[i]), 1)]
+            elif i==0:
+                D.debug_regression(*([None]*3),skip=True)
+            if i==0:D.debug_heat_prediction(pi, tobj)
 
             obji = self.BCEobj(pi[..., 4], tobj)
 
@@ -248,14 +259,14 @@ class ComputeLoss:
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
-        mlt = tobj.shape[0]**0.5  # batch size
+        mlt = tobj.shape[0]
 
         return (lbox + lobj + lcls + lcnt) * mlt, torch.stack((lobj_items*self.hyp['obj'], lbox_items*self.hyp['box'], lcnt_items), dim=1)
 
     def build_targets(self, p, targets):
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
-        tcls, tbox, indices, anch = [], [], [], []
+        tcls, tbox, indices, anch, tgs = [], [], [], [], []
         gain = torch.ones(7, device=self.device)  # normalized to gridspace gain
         ai = torch.arange(na, device=self.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[..., None]), 2)  # append anchor indices
@@ -293,7 +304,9 @@ class ComputeLoss:
                 j = torch.stack((torch.ones_like(j), j, k, l, m))
                 t = t.repeat((5, 1, 1))[j]
                 offsets = (torch.zeros_like(gxy)[None] + off[:, None])[j]
+                tt = t/ gain
             else:
+                tt = targets[0]
                 t = targets[0]
                 offsets = 0
 
@@ -305,9 +318,10 @@ class ComputeLoss:
 
             # Append
             gain = gain.long()
+            tgs.append(tt)
             indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
             tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
             anch.append(anchors[a])  # anchors
             tcls.append(c)  # class
 
-        return tcls, tbox, indices, anch
+        return tcls, tbox, indices, anch, tgs

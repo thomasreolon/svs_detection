@@ -8,6 +8,7 @@ from datasets.mot_svs_cache import FastDataset
 from utils import StatsLogger, init_seeds
 from models import build as build_model, ComputeLoss
 from engine import train_one_epoch, test_epoch
+import utils.debugging as D
 
 
 def main(args, device):
@@ -21,8 +22,16 @@ def main(args, device):
     logger = StatsLogger(args)
     logger.save_cfg()
     model_path = f'{logger.out_path[:-10]}/model.pt'
+    if args.debug: D.debug_setup(logger.out_path[:-10])
 
-    if not (args.skip_train and os.path.exists(model_path)):
+    # Load Pretrained
+    if os.path.exists(model_path):
+        m_w = model.state_dict()
+        weights = torch.load(model_path, map_location='cpu')
+        weights = {k:w for k,w in weights.items() if k in m_w and m_w[k].shape==w.shape}
+        model.load_state_dict(weights, strict=False)
+
+    if not args.skip_train:
         # Train
         np=sum(p.numel() for p in model.parameters())
         center_print(f'Starting Training ({np}param)', ' .')
@@ -31,13 +40,12 @@ def main(args, device):
         # Load Dataset
         dataset = FastDataset(args, True, True)
         tr_loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn, shuffle=True)
-
         
         mainpbar = tqdm(range(args.epochs))
         for epoch in mainpbar:
-
             # One Epoch
-            summary = train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch)
+            debug = args.debug and epoch in {0,1,4,args.epochs//4,args.epochs//2,args.epochs-1}
+            summary = train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug)
 
             # Log Results
             logger.log(summary+'\n')
@@ -48,20 +56,17 @@ def main(args, device):
             if epoch==args.epochs//2:
                 logger.log_time()
                 logger.log('>> changing loss \n')
-                loss_fn.gr = .5 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.5)
+                loss_fn.gr = .9 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.9)
             if epoch==args.epochs*4//5:
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
-            if epoch==args.epochs*9//10:
-                logger.log('>> changing dataset \n')
-                dataset.drop(['all_videos_MOT']) # change dataset dropping MOT17/Synth videos
-                tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
+            # if epoch==args.epochs*9//10:
+            #     logger.log('>> changing dataset \n')
+            #     dataset.drop(['all_videos_MOT']) # change dataset dropping MOT17/Synth videos
+            #     tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
-    else:
-        model.load_state_dict(torch.load(model_path, map_location='cpu'))
-        model.to(device)
 
     ## Test
     t = logger.log_time()
@@ -71,7 +76,7 @@ def main(args, device):
         dataset = FastDataset(args, is_train, False)
 
         # Inference
-        test_epoch(args, dataset, model, loss_fn, is_train, logger, device)        
+        test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)        
 
     # Log Results
     logger.log_time() ; logger.log_stats() ; logger.close()

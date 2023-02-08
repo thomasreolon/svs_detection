@@ -69,12 +69,18 @@ class MOTDataset(torch.utils.data.Dataset):
             # load from file_system
             with open(cache_path, 'rb') as f_data:
                 self.data = pickle.load(f_data)
+        
+        if aug_affine:
+            self.data = [x for x in self.data if len(x[2]>0)]
 
     def __len__(self):
         return self.data.__len__()
     
     def __getitem__(self, idx):
         info, img, boxes, ids = self.data[idx]
+
+        if len(ids) != len(boxes):
+            ids = (list(ids) + list(range(100,200)))[:len(boxes)]
 
         # augment flip rotate
         img, boxes, ids = self.aug_post(img, boxes, ids)

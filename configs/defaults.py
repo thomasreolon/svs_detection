@@ -23,7 +23,7 @@ def get_args_parser():
 
     # Training Setting
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--lr', default=1e-2, type=float)
+    parser.add_argument('--lr', default=3e-3, type=float)
     parser.add_argument('--epochs', default=50, type=int)
 
     # Eval Settings
@@ -31,6 +31,7 @@ def get_args_parser():
     parser.add_argument('--exp_name', default='', type=str)
     parser.add_argument('--detect_thresh', default=0.4, type=float)
     parser.add_argument('--nms_iou', default=0.3, type=float)
+    parser.add_argument('--debug', action='store_true',                         help='generates visuals to understand training')
     parser.add_argument('--skip_train', action='store_true',                    help='tries to load a pretrained model')
 
     return parser

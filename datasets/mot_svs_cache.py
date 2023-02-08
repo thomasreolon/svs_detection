@@ -86,7 +86,7 @@ def get_configs(args, is_train, aug_affine):
             'mydataset':{
                 'select_video':'vid_',
                 'is_train':True,  
-                'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                 'aug_affine':aug_affine   
             },
             'darker':{

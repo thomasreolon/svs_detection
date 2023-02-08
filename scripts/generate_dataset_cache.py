@@ -8,7 +8,7 @@ FRAMERATES = [1,4,16]
 SVS_INIT = [(1,3,5), (2,3,10), (4,1,5)]
 USE_CROP = [True, False]
 SIMULATOR = ['static', 'grey']
-tot = len(FRAMERATES)*len(SVS_INIT)*len(USE_CROP)*len(SIMULATOR)*2
+tot = len(FRAMERATES)*len(SVS_INIT)*len(USE_CROP)*len(SIMULATOR)
 
 
 args = get_args_parser().parse_args()
@@ -21,10 +21,11 @@ with tqdm(total=tot) as pbar:
         for fr in FRAMERATES:
             args.framerate = fr
             for crop in USE_CROP:
-                args.use_crop = crop
+                args.crop_svs = crop
                 for sim in SIMULATOR:
                     args.simulator = sim
+                    try:
+                        dataset = FastDataset(args, False, False)
+                        dataset = FastDataset(args, True, False)
+                    except Exception as e: print(e)
                     pbar.update(1)
-                    dataset = FastDataset(args, False, False)
-                    pbar.update(1)
-                    dataset = FastDataset(args, True, False)

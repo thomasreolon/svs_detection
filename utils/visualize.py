@@ -61,9 +61,9 @@ class StatsLogger():
         svs_img = self.draw_boxes(svs_img, pred_boxes, [1]*len(pred_boxes))
 
         # rescale heatmap
-        heat = np.uint8((heat*255)[...,None].expand(-1,-1,3))
+        heat = np.uint8((heat.sigmoid()*255)[...,None].expand(-1,-1,3))
         heat = cv2.resize(heat, (self.VIS_SIZE[1], self.VIS_SIZE[0]))
-        heat[heat[...,0]>.6*255] = (0,0,200)
+        heat[heat[...,0]>self.args.detect_thresh*255] = (0,0,200)
 
         # print frame infos
         boxes = np.ones_like(heat)*255  # TODO: view what?
@@ -100,17 +100,17 @@ class StatsLogger():
         img = cv2.putText(img, 'Annotations',   (8, 25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
         img = cv2.putText(img, 'Predictions',   (400, 25), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
         i = 2
-        for box in gt_boxes:
+        for box in gt_boxes[:6]:
             img = cv2.putText(img, f'{box[0]:.2f},{box[1]:.2f},{box[2]:.2f},{box[3]:.2f}',   (8,i*28), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
             i += 1
         i = 2
-        for box in pred_boxes[:8]:
+        for box in pred_boxes[:6]:
             img = cv2.putText(img, f'{box[0]:.2f},{box[1]:.2f},{box[2]:.2f},{box[3]:.2f}',   (400,i*28), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
             i += 1
         gt_p, gt_c = int(len(gt_boxes)>0), len(gt_boxes)
         pr_p, pr_c = int(count[0]>.5), int(count[1])
-        img = cv2.putText(img, f'Activate: [{gt_p: 2d} ]  [{pr_p: 2d} ]',   (150, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
-        img = cv2.putText(img, f'Count:   [{gt_c: 2d} ]  [{pr_c: 2d} ]',   (150, 340), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
+        img = cv2.putText(img, f'Activate: [{gt_p: 2d} ]  [{pr_p: 2d} ]',   (160, 300), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
+        img = cv2.putText(img, f'Count:   [{gt_c: 2d} ]  [{pr_c: 2d} ]',   (160, 340), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
         return img
 
     def draw_boxes(self, img, boxes, ids):
@@ -118,6 +118,7 @@ class StatsLogger():
         boxes = safe_box_cxcywh_to_xyxy(boxes)
         boxes = (boxes * torch.tensor([[img.shape[1],img.shape[0],img.shape[1],img.shape[0]]])).int().tolist()
         for (x1,y1,x2,y2), id in zip(boxes, ids):
+            x1,y1,x2,y2 = max(min(x1,img.shape[1]-2), 0),max(min(y1,img.shape[0]-2), 0),max(min(x2,img.shape[1]-1), 1),max(min(y2,img.shape[0]-1), 1)
             if isinstance(id, torch.Tensor): id = id.item()
             color = tuple([(id * prime + (10+id)*83) % 255 for prime in [643,997,676]])
             img = cv2.rectangle(img, (x1,y1), (x2,y2), color)
@@ -125,9 +126,10 @@ class StatsLogger():
         return img
 
     def clean_svs(self, svs_img, pred_boxes):
-        """posrprocess after YoloDetectionHead for visualization"""
+        """postprocess after YoloDetectionHead for visualization"""
         # normalize precictons (to be in range 0,1)
-        pred_boxes = pred_boxes / torch.tensor(svs_img.shape)[[2,1,2,1]]
+        pred_boxes = pred_boxes / torch.tensor(svs_img.shape)[[2,1,2,1]] ####### NOOOO TODO
+        pred_boxes = pred_boxes.clamp(0,1)
 
         # upscale image for better visualization
         svs_img = ((svs_img*.9+.1).permute(1,2,0)*255).cpu().numpy().astype(np.uint8)

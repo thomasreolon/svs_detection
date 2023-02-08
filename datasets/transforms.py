@@ -110,9 +110,9 @@ def letterbox(im, tg, new_shape=(128, 160)):
 def gettransforms_post(aug_post):
     if aug_post:
         motaug = MotCompose([
-                    MotRandomHorizontalFlip(128,160,False),
-                    FixedMotRandomShift(),
-                    MotCropIfBigger(),
+                    MotCropIfBigger(128,160,False),
+                    MotRandomHorizontalFlip(),
+                    MotRandomShift(),
                     MotToTensor(),  # also scales from HW to [01]
                     MotNormalize([0.1], [0.9])
                 ])
@@ -208,32 +208,16 @@ def hflip(image, target):
     return flipped_image, target
 
 
-class FixedMotRandomShift():
-    def __init__(self, bs=1, padding=64):
-        self.bs = bs
-        self.padding = padding
-
+class MotRandomShift():
     def __call__(self, imgs: list, targets: list):
         ret_imgs = []
         ret_targets = []
-
-        n_frames = self.bs
         w, h = imgs[0].size
-        xshift = (self.padding * torch.rand(self.bs)).int() + 1
-        xshift *= (torch.randn(self.bs) > 0.0).int() * 2 - 1
-        yshift = (self.padding * torch.rand(self.bs)).int() + 1
-        yshift *= (torch.randn(self.bs) > 0.0).int() * 2 - 1
-        ret_imgs.append(imgs[0])
-        ret_targets.append(targets[0])
-        for i in range(1, n_frames):
-            ymin = max(0, -yshift[0])
-            ymax = min(h, h - yshift[0])
-            xmin = max(0, -xshift[0])
-            xmax = min(w, w - xshift[0])
-            prev_img = ret_imgs[i-1].copy()
-            prev_target = copy.deepcopy(ret_targets[i-1])
-            region = (int(ymin), int(xmin), int(ymax - ymin), int(xmax - xmin))
-            img_i, target_i = random_shift(prev_img, prev_target, region, (h, w))
+
+        for img, target in zip(imgs, targets):
+            r = np.random.rand(1)*.2+.8
+            region = T.RandomCrop.get_params(imgs[0], [int(r*h),int(r*w)])
+            img_i, target_i = random_shift(img, target, region, (h, w))
             ret_imgs.append(img_i)
             ret_targets.append(target_i)
 
@@ -259,9 +243,8 @@ def random_shift(image, target, region, sizes):
     cropped_boxes = cropped_boxes.clamp(min=0)
     keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
 
-    n_size = len(target['obj_ids'])
-    target['boxes'] = target['boxes'][keep[:n_size]]
-    target['obj_ids'] = target['obj_ids'][keep[:n_size]]
+    target['boxes'] = target['boxes'][keep]
+    target['obj_ids'] = target['obj_ids'][keep]
 
     return cropped_image, target
 

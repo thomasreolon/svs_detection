@@ -77,19 +77,18 @@ class MLPDetectorv2(nn.Module):
 
     def __init__(self, ch_in=1):
         super().__init__()
-        anchors = [[1,4,  8,8,  1,1]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        anchors = [[1,4,  4,8,  16,16,  2,2]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
 
         self.model = nn.ModuleList([
-            BlockMLPv2(ch_in=1,ch_out=4,mlp_size=5),
+            BlockMLPv2(ch_in=ch_in,ch_out=8,mlp_size=5),
 
-            BlockMLPv2(ch_in=4,ch_out=8,mlp_size=6),
+            BlockMLPv2(ch_in=8,ch_out=16,mlp_size=6),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
-            AppendPosEmbedd(self.POS),
-            BlockMLPv2(ch_in=8+self.POS,ch_out=24,mlp_size=5),
+            BlockMLPv2(ch_in=16,ch_out=32,mlp_size=5),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
-            Detect(1, anchors, [24]),
+            Detect(1, anchors, [32]),
         ])
         self.model[-1].stride = torch.tensor([4, 4])
         self._init_weights()
