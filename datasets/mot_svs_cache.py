@@ -49,18 +49,18 @@ class FastDataset(torch.utils.data.Dataset):
 def get_cache_path(args, v):
     if args.dont_cache: return None
     os.makedirs( f'{args.out_path}/_ds_cache/', exist_ok=True)
-    noise = 'None' if v["aug_color"]["noise"] is None else ",".join([str(x) for x in v["aug_color"]["noise"]])
-    simulator = '' if v["simulator"] == 'static' else f'_SIM[{v["simulator"]}]'
+    noise = 'None' if v["aug_color"]["noise"] is None else ",".join([f'{x:.2f}' for x in v["aug_color"]["noise"]])
     return  f'{args.out_path}/_ds_cache/ds' \
             f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
             f'_SEL[{v["select_video"]}]' \
             f'_FRM[{v["framerate"]}]' \
             f'_CAR[{int(v["use_cars"])}]' \
             f'_TRN[{int(v["is_train"])}]' \
-            f'{simulator}' \
-            f'_COL[{v["aug_color"]["brightness"]},{v["aug_color"]["contrast"]},' \
-                 f'{v["aug_color"]["saturation"]},{v["aug_color"]["sharpness"]},' \
-                 f'{v["aug_color"]["hue"]},{v["aug_color"]["gamma"]},{noise}]' \
+            f'_CRP[{int(v["crop_svs"])}]' \
+            f'_SIM[{v["simulator"]}]' \
+            f'_COL[{v["aug_color"]["brightness"]:.2f},{v["aug_color"]["contrast"]:.2f},' \
+                 f'{v["aug_color"]["saturation"]:.2f},{v["aug_color"]["sharpness"]:.2f},' \
+                 f'{v["aug_color"]["hue"]:.2f},{v["aug_color"]["gamma"]:.2f},{noise}]' \
              '.pkl'
 
 
@@ -69,46 +69,52 @@ def get_configs(args, is_train, aug_affine):
     def rand(): return 0.5 + (-.1+np.random.rand())**2 - (-.1+np.random.rand())**2
     if is_train:
         configs =  {
-            'all_videos_MOT':{
+            'mot17':{
                 # all videos from MOT17 & synthMOT without augmentations
-                'select_video':'-',
+                'select_video':'MOT17',
                 'is_train':True,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                 'aug_affine':aug_affine   
             },
-            'all_videos_NEW':{
+            'synth':{
                 # all videos from TOMDataset without augmentations
-                'select_video':'vid',
+                'select_video':'synth',
                 'is_train':True,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':aug_affine   
+            },
+            'mydataset':{
+                'select_video':'vid_',
+                'is_train':True,  
+                'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
                 'aug_affine':aug_affine   
             },
             'darker':{
-                'select_video':'vid_1',
+                'select_video':['vid_2','vid_3'],
                 'is_train':True,  
                 'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
                 'aug_affine':aug_affine   
             },
             'noise':{
-                'select_video':'vid_1',
+                'select_video':['vid_4','vid_3'],
                 'is_train':True,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
                 'aug_affine':aug_affine   
             },
             'mixed1':{
-                'select_video':'vid_5',
+                'select_video':['vid_4','vid_5'],
                 'is_train':True,  
                 'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
                 'aug_affine':aug_affine   
             },
             'mixed2':{
-                'select_video':'vid_5',
+                'select_video':['vid_6','vid_5'],
                 'is_train':True,  
                 'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
                 'aug_affine':aug_affine   
             },
             'mixed3':{
-                'select_video':'vid_5',
+                'select_video':['vid_6','vid_7'],
                 'is_train':True,  
                 'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
                 'aug_affine':aug_affine   
@@ -117,19 +123,19 @@ def get_configs(args, is_train, aug_affine):
     else:
         configs =  {
             'all videos':{
-                'select_video':'',
+                'select_video':'vid_',
                 'is_train':False,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                 'aug_affine':False   
             },
             'darker':{
-                'select_video':'',
+                'select_video':'vid_',
                 'is_train':False,  
                 'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
                 'aug_affine':False   
             },
             'noise':{
-                'select_video':'',
+                'select_video':'vid_',
                 'is_train':False,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.6)}, 
                 'aug_affine':False   
@@ -144,6 +150,7 @@ def get_configs(args, is_train, aug_affine):
             'framerate':args.framerate, 
             'use_cars':args.use_cars,
             'simulator':args.simulator,
+            'crop_svs':args.crop_svs,
         })
 
     return configs

@@ -34,13 +34,18 @@ class MOTDataset(torch.utils.data.Dataset):
                  aug_color=None,        # dict on color augmentation of video
                  aug_affine=True,       # if true use hflip/shift,   else just normalize
                  simulator='static',    # which simulator to use
+                 crop_svs=False,        # which simulator to use
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
         super().__init__()
         self.aug_post = gettransforms_post(aug_affine)
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
+        self.crop_svs = crop_svs
         Simulator = get_simulator(simulator)
+        
+        if cache_path is not None:
+            cache_path = os.path.abspath(cache_path)
 
         if cache_path is None or not os.path.exists(cache_path):
             # simulator:  frame --> motion_map
@@ -53,7 +58,7 @@ class MOTDataset(torch.utils.data.Dataset):
             # data[(video_frame, svs_img, boxes, obj_ids)]
             self.data = []
             for video in videos:
-                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE, is_train)[2:]
+                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE, is_train, crop_svs)
                 self.data += samples[max(2, len(samples)//4):]
             
             if cache_path is not None:
@@ -91,12 +96,17 @@ class MOTDataset(torch.utils.data.Dataset):
 
         return info, imgs, tgs, ids
 
-    
+
+def is_in(select, v_name):
+    if isinstance(select, str):
+        return select in v_name
+    else:
+        return any([s in v_name for s in select])
 
 def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
     folder = 'train' if is_train else 'test'
     mot_path = f'{mot_path}/{folder}'
-    videos = [v_name for v_name in os.listdir(mot_path) if select_video in v_name]
+    videos = [v_name for v_name in os.listdir(mot_path) if is_in(select_video, v_name)]
 
     data = []
     for v_name in videos:
@@ -145,7 +155,7 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
     return data
 
 
-def simulate_svs(foresensor, data, aug_color, img_shape, is_train):
+def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
     # prep images for simulator
     to_gray = gettransform_numpygrayscale()
     images = []
@@ -164,6 +174,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train):
 
         # resize image for simulator
         gt = np.array(gt).reshape(-1,5)
+        if crop_svs: img_shape = (img_shape[0]*4, int((img.shape[0]/img.shape[1]) *img_shape[0]*4))
         img, boxs = letterbox(img, gt[:,:4].astype(np.float64), img_shape)
 
         images.append(img)

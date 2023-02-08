@@ -8,6 +8,7 @@ def get_args_parser():
     # Dataset Settings
     parser.add_argument('--mot_path', default='E:/dataset/MOTs', type=str)
     parser.add_argument('--use_cars', action='store_true',                      help='use bounding boxes of cars too')
+    parser.add_argument('--crop_svs', action='store_true',                      help='computes svs in high res, then crops it')
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
     
     # Model Settings
