@@ -213,11 +213,18 @@ class ComputeLoss:
                     anchor_wh = anchor_wh[:,0]*anchor_wh[:,1]
                     targ_wh = tgs[i][:,4]*tgs[i][:,5]
                     coeff = torch.min(anchor_wh/targ_wh, targ_wh/anchor_wh)
+                # # Regression NOTE: 1 lines here, 1 on generation target, 1 on Detection
+                # pxy = pxy.sigmoid() * 2 - 0.5 
+                # pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
+                # pbox = torch.cat((pxy, pwh), 1)  # predicted box
+                # iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
+                # lbox += ((1.0 - iou)*coeff).mean()  # iou loss
+
                 # Regression
-                pxy = pxy.sigmoid() * 2 - 0.5
-                pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
+                pxy = pxy.sigmoid() * 2 - 0.5 
+                pwh = pwh ###### * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
+                iou = -((pbox*1.3-tbox[i]*1.3)**2).sum(dim=1)
                 lbox += ((1.0 - iou)*coeff).mean()  # iou loss
 
                 tmp=[torch.nan_to_num(1-iou[b==i].mean().detach(), -1).view(1) for i in range(bs)]
@@ -320,6 +327,7 @@ class ComputeLoss:
             gain = gain.long()
             tgs.append(tt)
             indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices
+            gwh = tt[:,4:6] #########NOTE:2
             tbox.append(torch.cat((gxy - gij, gwh), 1))  # box
             anch.append(anchors[a])  # anchors
             tcls.append(c)  # class

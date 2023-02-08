@@ -18,7 +18,7 @@ def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
 
         # Loss
         loss, l_item = loss_fn(y, gt_boxes, count)
-        lo = l_item[:,0].mean() ; lb = l_item[l_item[:,1]>=0,1].mean() ; lc = l_item[:,2].mean()
+        lo = l_item[:,0].mean() ; lb = l_item[l_item[:,1]>=0,1].mean() ; lc = l_item[l_item[:,1]>=0,1].mean()
         check_not_nan(lo, lb, lc)
 
         # Step
@@ -52,7 +52,7 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
         D.should_debug(debug, v_split+str(j))
         D.debug_visualize_gt(imgs, tgs)
         imgs = imgs.to(device) ; tgs = tgs.to(device)
-        
+
         # Inference
         preds, y, counts = model(imgs)
         _, l_items = loss_fn(y, tgs, counts)

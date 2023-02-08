@@ -57,14 +57,14 @@ def main(args, device):
 
             # Update Learning Strategy
             if scheduler is not None: scheduler.step()
-            if epoch==args.epochs//2:
-                logger.log_time()
-                logger.log('>> changing loss \n')
-                loss_fn.gr = .9 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.9)
-            if epoch==args.epochs*4//5:
-                logger.log('>> changing optimizer \n')
-                optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
-                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
+            # if epoch==args.epochs//2:
+            #     logger.log_time()
+            #     logger.log('>> changing loss \n')
+            #     loss_fn.gr = .9 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.9)
+            # if epoch==args.epochs*4//5:
+            #     logger.log('>> changing optimizer \n')
+            #     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
+            #     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
             # if epoch==args.epochs*9//10:
             #     logger.log('>> changing dataset \n')
             #     dataset.drop(['all_videos_MOT']) # change dataset dropping MOT17/Synth videos

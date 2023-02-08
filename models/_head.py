@@ -44,9 +44,10 @@ class Detect(nn.Module):
 
                 y = x[i].sigmoid()
                 y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
-                y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                # y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                y[..., 2:4] = x[i][..., 2:4]* torch.tensor([160,128],device=x[i].device)  # wh
                 z.append(y.view(bs, -1, self.no))
-        
+
         # if there is an object, how many there are
         c = torch.stack(c, dim=1) # bs, nl, 3
         w = c[:,:,2].sigmoid()
@@ -59,17 +60,19 @@ class Detect(nn.Module):
 
     def _make_grid(self, nx=20, ny=20, i=0):
         d = self.anchors[i].device
+        if self.stride.device != d:
+            self.stride = self.stride.to(d)
         t = self.anchors[i].dtype
         shape = 1, self.na, ny, nx, 2  # grid shape
         y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
         yv, xv = torch.meshgrid(y, x, indexing='ij')
         grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
-        anchor_grid = (self.anchors[i] * self.stride[i].to(d)).view((1, self.na, 1, 1, 2)).expand(shape)
+        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
         return grid, anchor_grid
 
     @staticmethod
     def postprocess(pred, thresh, nms):
-        return non_max_suppression(pred, thresh, nms, None, False, max_det=40)
+        return non_max_suppression(pred, thresh, nms, None, False)
 
 
 def non_max_suppression(prediction,
@@ -83,7 +86,7 @@ def non_max_suppression(prediction,
     """Non-Maximum Suppression (NMS) on inference results to reject overlapping bounding boxes
 
     Returns:
-         list of detections, on (n,6) tensor per image [xyxy, conf, cls]
+         list of detections, on (n,6) tensor per image [xywh, conf, cls]
     """
 
     bs = prediction.shape[0]  # batch size
@@ -97,7 +100,7 @@ def non_max_suppression(prediction,
     # Settings
     # min_wh = 2  # (pixels) minimum box width and height
     max_wh = 7680  # (pixels) maximum box width and height
-    max_nms = 3000  # maximum number of boxes into torchvision.ops.nms()
+    max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
     time_limit = 0.1 + 0.03 * bs  # seconds to quit after
     redundant = True  # require redundant detections
     multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
@@ -166,6 +169,7 @@ def non_max_suppression(prediction,
             if redundant:
                 i = i[iou.sum(1) > 1]  # require redundancy
 
+        x[i, :4] = xyxy2xywh(x[i, :4])
         output[xi] = x[i]
         if (time.time() - t) > time_limit:
             break  # time limit exceeded
@@ -179,6 +183,15 @@ def xywh2xyxy(x):
     y[:, 1] = x[:, 1] - x[:, 3] / 2  # top left y
     y[:, 2] = x[:, 0] + x[:, 2] / 2  # bottom right x
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
+    return y
+
+def xyxy2xywh(x):
+    # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
+    y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
+    y[:, 0] = (x[:, 0] + x[:, 2]) / 2  # center x
+    y[:, 1] = (x[:, 1] + x[:, 3]) / 2  # center y
+    y[:, 2] = (x[:, 2]-x[:, 0]) # w
+    y[:, 3] = (x[:, 3]-x[:, 1]) # h
     return y
 
 
