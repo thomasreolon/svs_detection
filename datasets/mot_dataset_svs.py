@@ -71,7 +71,7 @@ class MOTDataset(torch.utils.data.Dataset):
                 self.data = pickle.load(f_data)
         
         if aug_affine:
-            self.data = [x for x in self.data if len(x[2]>0)]
+            self.data = [x for x in self.data if self.allow_empty(x[2])]
 
     def __len__(self):
         return self.data.__len__()
@@ -101,6 +101,18 @@ class MOTDataset(torch.utils.data.Dataset):
         imgs = torch.stack(imgs)   # concat tensors
 
         return info, imgs, tgs, ids
+
+    _empty=0
+    def allow_empty(self,box):
+        if len(box):
+            self._empty = max(3,self._empty+1)
+            return True
+        elif self._empty==3:
+            self._empty = 0
+            return True
+        return False
+
+
 
 
 def is_in(select, v_name):
@@ -136,6 +148,7 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
                     line = [int(float(x)) for x in line.split(',')[:-1]]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <confidence> <class> <visibility>  <X><Y><Z>
                     if line[7] != 1 and not use_cars : continue
+                    if line[8] < .44: continue
                 elif 'MOT17' in v_name:
                     line = [int(float(x)) for x in line.split(',')[:-1]]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <? iscrowd> <class> <visibility>
@@ -144,7 +157,7 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
                 elif 'vid' in v_name:
                     line = [int(float(x)) for x in line.split(' ')[:-1]]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <-1> <-1> <iscar>
-                    if line[-1] == 1 and not use_cars: continue # don't get BB of cars if use_cars==False
+                    if line[8] == 1 and not use_cars: continue # don't get BB of cars if use_cars==False
 
                 all_box[line[0]].append([line[2], line[3], line[4], line[5],  line[1]])
 

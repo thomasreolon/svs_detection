@@ -9,9 +9,9 @@ def build(model_name, ch_in = 1):
     if model_name == 'mlp2':
         return MLPDetectorv2(ch_in)
     if model_name == 'yolos':
-        return MLPDetectorv2(ch_in)
+        return YoloNetSmall(ch_in)
     if model_name == 'yolophi':
-        return MLPDetectorv2(ch_in)
+        return YoloNetPhi(ch_in)
     else:
         raise NotImplementedError(f'Model {model_name} is not implemented')
 

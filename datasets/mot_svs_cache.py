@@ -83,42 +83,42 @@ def get_configs(args, is_train, aug_affine):
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                 'aug_affine':aug_affine   
             },
-            'mydataset':{
-                'select_video':'vid_',
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':aug_affine   
-            },
-            'darker':{
-                'select_video':['vid_2','vid_3'],
-                'is_train':True,  
-                'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
-                'aug_affine':aug_affine   
-            },
-            'noise':{
-                'select_video':['vid_4','vid_3'],
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
-                'aug_affine':aug_affine   
-            },
-            'mixed1':{
-                'select_video':['vid_4','vid_5'],
-                'is_train':True,  
-                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
-                'aug_affine':aug_affine   
-            },
-            'mixed2':{
-                'select_video':['vid_6','vid_5'],
-                'is_train':True,  
-                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
-                'aug_affine':aug_affine   
-            },
-            'mixed3':{
-                'select_video':['vid_6','vid_7'],
-                'is_train':True,  
-                'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
-                'aug_affine':aug_affine   
-            },
+            # 'mydataset':{
+            #     'select_video':'vid_',
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+            #     'aug_affine':aug_affine   
+            # },
+            # 'darker':{
+            #     'select_video':['vid_2','vid_3'],
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+            #     'aug_affine':aug_affine   
+            # },
+            # 'noise':{
+            #     'select_video':['vid_4','vid_3'],
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
+            #     'aug_affine':aug_affine   
+            # },
+            # 'mixed1':{
+            #     'select_video':['vid_4','vid_5'],
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+            #     'aug_affine':aug_affine   
+            # },
+            # 'mixed2':{
+            #     'select_video':['vid_6','vid_5'],
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+            #     'aug_affine':aug_affine   
+            # },
+            # 'mixed3':{
+            #     'select_video':['vid_6','vid_7'],
+            #     'is_train':True,  
+            #     'aug_color':{'brightness':rand(), 'contrast':rand(), 'saturation':rand(), 'sharpness':rand(), 'hue':rand(), 'gamma':rand(), 'noise':(np.random.rand(),np.random.rand(),.1+np.random.rand(),np.random.rand())}, 
+            #     'aug_affine':aug_affine   
+            # },
         }
     else:
         configs =  {
@@ -128,18 +128,18 @@ def get_configs(args, is_train, aug_affine):
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                 'aug_affine':False   
             },
-            'darker':{
-                'select_video':'vid_',
-                'is_train':False,  
-                'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
-                'aug_affine':False   
-            },
-            'noise':{
-                'select_video':'vid_',
-                'is_train':False,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.6)}, 
-                'aug_affine':False   
-            },
+            # 'darker':{
+            #     'select_video':'vid_',
+            #     'is_train':False,  
+            #     'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+            #     'aug_affine':False   
+            # },
+            # 'noise':{
+            #     'select_video':'vid_',
+            #     'is_train':False,  
+            #     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.6)}, 
+            #     'aug_affine':False   
+            # },
         }
     for v in configs.values():
         v.update({

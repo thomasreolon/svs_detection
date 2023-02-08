@@ -15,7 +15,10 @@ def main(args, device):
     # Setup Model & Loss
     model = build_model(args.architecture).to(device)
     loss_fn = ComputeLoss(model)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW([
+            {'params': model.model[1:].parameters(), 'lr': args.lr},
+            {'params': model.model[0].parameters()}
+        ], lr=args.lr/3, weight_decay=2e-5, betas=(0.92, 0.999))
     scheduler = None
 
     # Initialize Logger
@@ -27,8 +30,9 @@ def main(args, device):
     # Load Pretrained
     if os.path.exists(model_path):
         m_w = model.state_dict()
-        weights = torch.load(model_path, map_location='cpu')
-        weights = {k:w for k,w in weights.items() if k in m_w and m_w[k].shape==w.shape}
+        weights1 = torch.load(model_path, map_location='cpu')
+        weights = {k:w for k,w in weights1.items() if k in m_w and m_w[k].shape==w.shape}
+        if len(weights1)!=len(weights):print(f'Loaded with {len(weights)-len(weights1)} mismatches')
         model.load_state_dict(weights, strict=False)
 
     if not args.skip_train:

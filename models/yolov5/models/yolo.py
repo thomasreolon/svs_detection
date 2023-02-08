@@ -67,7 +67,7 @@ class YoloNet(nn.Module):
             s = torch.tensor([128,160]) if i_shape is None else i_shape # 2x min stride
             m.inplace = self.inplace
             with torch.no_grad():
-                self.S = torch.tensor([x.shape[-3:-1] for x in self.forward(torch.zeros(1, ch, *s))])
+                self.S = torch.tensor([x.shape[-3:-1] for x in self.forward(torch.zeros(1, ch, *s))[1]])
             m.stride = s / self.S  # forward
             check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 2)
@@ -92,7 +92,7 @@ class YoloNet(nn.Module):
         y = []  # outputs
         for si, fi in zip(s, f):
             xi = scale_img(x.flip(fi) if fi else x, si, gs=int(self.stride.max()))
-            yi = self._forward_once(xi)[0]  # forward
+            yi = self._forward_once(xi)[1][0]  # forward
             # cv2.imwrite(f'img_{si}.jpg', 255 * xi[0].cpu().numpy().transpose((1, 2, 0))[:, :, ::-1])  # save
             yi = self._descale_pred(yi, fi, si, img_size)
             y.append(yi)
@@ -115,6 +115,7 @@ class YoloNet(nn.Module):
                 y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
+
         return x
 
     def to(self, *a, **k):
