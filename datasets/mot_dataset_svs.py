@@ -105,15 +105,12 @@ class MOTDataset(torch.utils.data.Dataset):
     _empty=0
     def allow_empty(self,box):
         if len(box):
-            self._empty = max(3,self._empty+1)
+            self._empty = min(3,self._empty+1)
             return True
         elif self._empty==3:
             self._empty = 0
             return True
         return False
-
-
-
 
 def is_in(select, v_name):
     if isinstance(select, str):
@@ -145,21 +142,20 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
 
                 # TODO: faster with np.loadtxt
                 if 'synth' in v_name:
-                    line = [int(float(x)) for x in line.split(',')[:-1]]
+                    line = [float(x) for x in line.split(',')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <confidence> <class> <visibility>  <X><Y><Z>
                     if line[7] != 1 and not use_cars : continue
                     if line[8] < .44: continue
                 elif 'MOT17' in v_name:
-                    line = [int(float(x)) for x in line.split(',')[:-1]]
+                    line = [float(x) for x in line.split(',')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <? iscrowd> <class> <visibility>
-                    if line[7] > 7: continue 
-                    if line[7] != 1 and not use_cars : continue 
+                    if line[7] != 1: continue 
                 elif 'vid' in v_name:
-                    line = [int(float(x)) for x in line.split(' ')[:-1]]
+                    line = [float(x) for x in line.split(' ')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <-1> <-1> <iscar>
                     if line[8] == 1 and not use_cars: continue # don't get BB of cars if use_cars==False
 
-                all_box[line[0]].append([line[2], line[3], line[4], line[5],  line[1]])
+                all_box[line[0]].append([line[2], line[3], line[4], line[5],  int(line[1])])
 
         # select by framerate
         selected = []
@@ -181,7 +177,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
     boxes = []
     obj_id = []
     infos = []
-    for i, (im_path, gt) in enumerate(data):
+    for i, (im_path, gt) in enumerate(data[:60]):  #NOTE: max 60 frames x sequence to speed up
         # augment input video color
         img = Image.open(im_path)
         if i==0:
@@ -193,7 +189,9 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
 
         # resize image for simulator
         gt = np.array(gt).reshape(-1,5)
-        if crop_svs: img_shape = (img_shape[0]*4, int((img.shape[0]/img.shape[1]) *img_shape[0]*4))
+        if crop_svs and 'vid_' not in im_path:
+            crop_svs = False 
+            img_shape = (img_shape[0]*3, int((img.shape[1]/img.shape[0]) *img_shape[0]*3))
         img, boxs = letterbox(img, gt[:,:4].astype(np.float64), img_shape)
 
         images.append(img)

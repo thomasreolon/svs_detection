@@ -6,7 +6,7 @@ from ._blocks import MLP, EnhanceFeatures
 
 class MLPDetector(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
-    HW = [16,32] # low dim map size
+    HW = [16,24] # low dim map size
     CH = 2+14
 
     def __init__(self, ch_in=1):
@@ -15,7 +15,7 @@ class MLPDetector(nn.Module):
         hw = self.HW[0] * self.HW[1]
 
         self.model = nn.ModuleList([
-            MLP(hw, 2*hw, 2*hw, 3), ### CHin_Must==1 TODO:change
+            MLP(hw, 2*hw, 2*hw, 1), ### CHin_Must==1 TODO:change
             EnhanceFeatures(ch_in, (self.CH-2), self.HW),
             nn.Sequential(nn.Conv2d(self.CH, self.CH*2, 3, 1, 1), nn.ReLU()),
             Detect(1, anchors, [self.CH*2]),

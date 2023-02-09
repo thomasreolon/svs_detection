@@ -9,7 +9,7 @@ def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
     loss_mean = np.zeros((5))
     pbar = tqdm(tr_loader, leave=False)
     for i, (_, imgs, gt_boxes, _) in enumerate(pbar):
-        D.should_debug(i in {1,4} and debug, f'{epoch}-{i}')
+        D.should_debug(i in {0,4} and debug, f'{epoch}-{i}')
         D.debug_visualize_gt(imgs, gt_boxes)
 
         # Forward

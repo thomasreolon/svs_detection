@@ -12,11 +12,11 @@ def get_args_parser():
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
     
     # Model Settings
-    parser.add_argument('--architecture', default='mlp2', type=str,          help='yolo, mlp1, mlp2, phinet')
-    parser.add_argument('--simulator', default='static', type=str,                 help='static, simple, evolution')
+    parser.add_argument('--architecture', default='mlp2', type=str,             help='mlp, mlp2, yolo5, yolophi, yolo8')
+    parser.add_argument('--simulator', default='static', type=str,              help='static, simple, evolution')
 
     # Configuration Setting
-    parser.add_argument('--framerate', default=4, type=int)
+    parser.add_argument('--framerate', default=10, type=int)
     parser.add_argument('--svs_close', default=1, type=int)
     parser.add_argument('--svs_open', default=3, type=int)
     parser.add_argument('--svs_hot', default=5, type=int)

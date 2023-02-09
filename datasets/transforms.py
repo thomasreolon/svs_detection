@@ -110,15 +110,15 @@ def letterbox(im, tg, new_shape=(128, 160)):
 def gettransforms_post(aug_post):
     if aug_post:
         motaug = MotCompose([
-                    MotCropIfBigger(128,160,False),
+                    # rotation ?
+                    MotRandomShift(128,160,False), # shift/resize
                     MotRandomHorizontalFlip(),
-                    MotRandomShift(),
                     MotToTensor(),  # also scales from HW to [01]
                     MotNormalize([0.1], [0.9])
                 ])
     else:
         motaug = MotCompose([
-                    MotCropIfBigger(128,160,True),
+                    MotRandomShift(128,160,True),
                     MotToTensor(),  # also scales from HW to [01]
                     MotNormalize([0.1], [0.9])
                 ])
@@ -138,6 +138,40 @@ def box_xyxy_to_cxcywh(x):
     return torch.stack(b, dim=-1)
 
 
+class MotRandomShift():
+    def __init__(self, h: int, w: int, test: bool):
+        self.h = h
+        self.w = w
+        self.test = test
+
+    def __call__(self, imgs: list, targets: list):
+        ret_imgs = []
+        ret_targets = []
+        w, h = self.w, self.h
+
+        # deterministic or random
+        r = 0.9 if self.test else np.random.rand()
+
+        # image size is already 128,160 or bigger
+        if w == imgs[0].size[0]:
+            r = r*.2+.8     # 80/90 % of the image
+        else:
+            r = 1+r*2       # 1/3-100 % of the image  (args.use_crop)
+        
+        # deterministic or random
+        if self.test:
+            i,j = imgs[0].size[1]-int(r*h), imgs[0].size[0]-int(r*w)
+            region = i//2, j//2, int(r*h),int(r*w)
+        else: 
+            region = T.RandomCrop.get_params(imgs[0], [int(r*h),int(r*w)])
+
+        for img, target in zip(imgs, targets):
+            img_i, target_i = random_shift(img, target, region, (h, w))
+            ret_imgs.append(img_i)
+            ret_targets.append(target_i)
+
+        return ret_imgs, ret_targets
+"""
 class MotCropIfBigger(object):
     def __init__(self, h: int, w: int, test: bool):
         self.h = h
@@ -145,16 +179,15 @@ class MotCropIfBigger(object):
         self.test = test
 
     def __call__(self, imgs: list, targets: list):
-        if imgs[0].size[0] == self.w:
-            return imgs, targets # skip if already good size
         ret_imgs = []
         ret_targets = []
 
         if self.test:   # fixed crop
-            i,j = imgs[0].size[1]-self.h-36, imgs[0].size[0]-self.w-42
+            i,j = imgs[0].size[1]-self.h-36, imgs[0].size[0]-self.w-100
             region = i, j, self.h, self.w
         else:           # rand crop
             region = T.RandomCrop.get_params(imgs[0], [self.h, self.w])
+
         for img_i, targets_i in zip(imgs, targets):
             img_i, targets_i = crop_mot(img_i, targets_i, region)
             ret_imgs.append(img_i)
@@ -181,7 +214,7 @@ def crop_mot(image, target, region):
     target['boxes'] = target['boxes'][keep]
     target['obj_ids'] = target['obj_ids'][keep]
 
-    return cropped_image, target
+    return cropped_image, target"""
 
 class MotRandomHorizontalFlip():
     def __call__(self, imgs, targets):
@@ -208,20 +241,6 @@ def hflip(image, target):
     return flipped_image, target
 
 
-class MotRandomShift():
-    def __call__(self, imgs: list, targets: list):
-        ret_imgs = []
-        ret_targets = []
-        w, h = imgs[0].size
-
-        for img, target in zip(imgs, targets):
-            r = np.random.rand(1)*.2+.8
-            region = T.RandomCrop.get_params(imgs[0], [int(r*h),int(r*w)])
-            img_i, target_i = random_shift(img, target, region, (h, w))
-            ret_imgs.append(img_i)
-            ret_targets.append(target_i)
-
-        return ret_imgs, ret_targets
 
 def random_shift(image, target, region, sizes):
     oh, ow = sizes
