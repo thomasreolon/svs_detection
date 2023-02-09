@@ -107,18 +107,18 @@ def letterbox(im, tg, new_shape=(128, 160)):
 
 
 
-def gettransforms_post(aug_post):
+def gettransforms_post(aug_post, out_shape):
     if aug_post:
         motaug = MotCompose([
                     # rotation ?
-                    MotRandomShift(128,160,False), # shift/resize
+                    MotRandomShift(*out_shape,False), # shift/resize
                     MotRandomHorizontalFlip(),
                     MotToTensor(),  # also scales from HW to [01]
                     MotNormalize([0.1], [0.9])
                 ])
     else:
         motaug = MotCompose([
-                    MotRandomShift(128,160,True),
+                    MotRandomShift(*out_shape,True),
                     MotToTensor(),  # also scales from HW to [01]
                     MotNormalize([0.1], [0.9])
                 ])
@@ -246,7 +246,7 @@ def random_shift(image, target, region, sizes):
     oh, ow = sizes
     # step 1, shift crop and re-scale image firstly
     cropped_image = F.crop(image, *region)
-    cropped_image = F.resize(cropped_image, sizes)
+    cropped_image = F.resize(cropped_image, sizes, interpolation=F.InterpolationMode.NEAREST)
 
     target = target.copy()
     i, j, h, w = region

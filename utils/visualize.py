@@ -9,7 +9,7 @@ from collections import defaultdict
 import torchvision.transforms.functional as F
 import torch
 
-from datasets.transforms import augment_color, get_mask, letterbox
+from datasets.transforms import augment_color, get_mask, letterbox, gettransforms_post
 
 class StatsLogger():
     VIS_SIZE = (640, 800)
@@ -21,6 +21,7 @@ class StatsLogger():
         self.stats = defaultdict(lambda: [np.zeros((2,2)), []])
 
         self.logtxt, self.logtxt_name = None, self.out_path+f'logs.txt'
+        self.transform = gettransforms_post(False, (640,800))
         self.cap = None
         assert self.VIS_SIZE[0]/self.VIS_SIZE[1]==128/160
 
@@ -160,7 +161,14 @@ class StatsLogger():
 
         # to numpy
         img = (F.to_tensor(img).permute(1,2,0)*255).numpy().astype(np.uint8)
-        img, _ = letterbox(img, torch.zeros(0,4), self.VIS_SIZE )
+        if 'vid_' in vid or not self.args.crop_svs:
+            img, _ = letterbox(img, torch.zeros(0,4), self.VIS_SIZE )
+        else:
+            hw = (1920, int(1920*img.shape[1]/img.shape[0]))
+            img, _ = letterbox(img, torch.zeros(0,4), hw )
+            img, _, _ = self.transform(img, np.zeros((0,4)), np.zeros((0)))
+            img = (img*.9+.1).permute(1,2,0).numpy()*255
+            img = np.ascontiguousarray(img).astype(np.uint8)
         return img
 
     def collect_stats(self, vid, count, pred, boxes):

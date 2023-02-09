@@ -34,12 +34,13 @@ class MOTDataset(torch.utils.data.Dataset):
                  aug_color=None,        # dict on color augmentation of video
                  aug_affine=True,       # if true use hflip/shift,   else just normalize
                  simulator='static',    # which simulator to use
-                 crop_svs=False,        # which simulator to use
+                 crop_svs=False,        # simulates in high res, will crop later
+                 triggering=False,      # if False drops most of frames that do not contain annotations   
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
         super().__init__()
-        self.aug_post = gettransforms_post(aug_affine)
+        self.aug_post = gettransforms_post(aug_affine, self.IMG_SHAPE)
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
         self.crop_svs = crop_svs
         Simulator = get_simulator(simulator)
@@ -70,7 +71,7 @@ class MOTDataset(torch.utils.data.Dataset):
             with open(cache_path, 'rb') as f_data:
                 self.data = pickle.load(f_data)
         
-        if aug_affine:
+        if not triggering:
             self.data = [x for x in self.data if self.allow_empty(x[2])]
 
     def __len__(self):
@@ -79,7 +80,7 @@ class MOTDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         info, img, boxes, ids = self.data[idx]
 
-        if len(ids) != len(boxes):
+        if len(ids) != len(boxes):#NOTE:ids are not useful anyway..
             ids = (list(ids) + list(range(100,200)))[:len(boxes)]
 
         # augment flip rotate
@@ -105,10 +106,10 @@ class MOTDataset(torch.utils.data.Dataset):
     _empty=0
     def allow_empty(self,box):
         if len(box):
-            self._empty = min(3,self._empty+1)
+            self._empty = min(23,self._empty+1)
             return True
-        elif self._empty==3:
-            self._empty = 0
+        elif self._empty >= 8:
+            self._empty  -= 8
             return True
         return False
 

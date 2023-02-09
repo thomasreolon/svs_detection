@@ -28,11 +28,13 @@ def main(args, device):
     if args.debug: D.debug_setup(logger.out_path[:-10])
 
     # Load Pretrained
-    if os.path.exists(model_path):
+    pretrained = model_path if args.pretrained=='<auto>' else args.pretrained
+    if os.path.exists(pretrained):
         m_w = model.state_dict()
-        weights1 = torch.load(model_path, map_location='cpu')
-        weights = {k:w for k,w in weights1.items() if k in m_w and m_w[k].shape==w.shape}
-        if len(weights1)!=len(weights):print(f'Loaded with {len(weights)-len(weights1)} mismatches')
+        o_w = torch.load(pretrained, map_location='cpu')
+        weights = {k:w for k,w in o_w.items() if k in m_w and m_w[k].shape==w.shape}
+        text = f'>> Loaded pretrained with {abs(len(weights)-len(o_w))} mismatches' 
+        logger.log(text+'\n') ; center_print(text, '   >', 1)
         model.load_state_dict(weights, strict=False)
 
     if not args.skip_train:
@@ -49,26 +51,27 @@ def main(args, device):
         for epoch in mainpbar:
             # One Epoch
             debug = args.debug and epoch in {0,1,4,args.epochs//4,args.epochs//2,args.epochs-1}
-            summary = train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug)
+            summary, start = train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug)
 
             # Log Results
+            if epoch==0:logger.log(start+'\n')
             logger.log(summary+'\n')
             mainpbar.set_description('>>prev '+summary[7:])
 
             # Update Learning Strategy
             if scheduler is not None: scheduler.step()
-            if epoch==args.epochs//2:
+            if epoch+1==args.epochs//2:
                 logger.log_time()
                 logger.log('>> changing loss \n')
                 loss_fn.gr = .5 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.5)
-            if epoch==args.epochs*4//5:
+            if epoch+1==args.epochs*4//5:
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
-            # if epoch==args.epochs*9//10:
-            #     logger.log('>> changing dataset \n')
-            #     dataset.drop(['all_videos_MOT']) # change dataset dropping MOT17/Synth videos
-            #     tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
+            if args.triggering and epoch+1==args.epochs*9//10:
+                logger.log('>> changing dataset \n')
+                dataset.drop(['MOT', 'synth']) # change dataset dropping MOT17/Synth videos
+                tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
 
@@ -80,18 +83,25 @@ def main(args, device):
         dataset = FastDataset(args, is_train, False)
 
         # Inference
-        test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)        
+        test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)     
+
+        # Print Some Infos
+        center_print(f'Stats for Eval: {"Train" if is_train else "Test"}', '.-\'-_', 2+int(is_train))
+        print('... TODO')
 
     # Log Results
     logger.log_time() ; logger.log_stats() ; logger.close()
 
 
-
-def center_print(text, pattern=' '):
+def center_print(text, pattern=' ', color=0):
+    # c   =    yellow       bold      purple       cyan
+    color = ['\033[93m', '\033[1m', '\033[95m', '\033[96m'][int(color%3)]
     cols = os.get_terminal_size().columns
-    n_pat = (cols - len(text) -2)//(2+len(pattern))
+    n_pat = max((cols - len(text) -2)//(2*len(pattern)), 0)
     pattern = pattern * n_pat
-    text = f'\n\033[93m{pattern} {text} {pattern}\033[0m\n'
+    pattern2 = pattern
+    for a,b in ['><', '()', '[]', '/\\']: pattern2 = pattern2.replace(a,b) 
+    text = f'\n{color}{pattern} {text} {"".join(reversed(pattern2))}\033[0m\n'
     print(text)
 
 

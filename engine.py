@@ -29,10 +29,11 @@ def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
 
         # Log
         loss_mean += (loss.item(), lo.item(), lb.item(), lc.item(), 1)
-        text = f"e[{epoch: 4d}]: loss_tot={loss_mean[0]/loss_mean[4]:.3e} lobj={loss_mean[1]/loss_mean[4]:.3e} lbox={loss_mean[2]/loss_mean[4]:.3e}, lcnt={loss_mean[3]/loss_mean[4]:.3e}"
+        text  = f"e[{epoch: 5d}]: loss_tot={loss_mean[0]/loss_mean[4]:.3e} lobj={loss_mean[1]/loss_mean[4]:.3e} lbox={loss_mean[2]/loss_mean[4]:.3e}, lcnt={loss_mean[3]/loss_mean[4]:.3e}"
+        if i==0: start = 'e[start]'+text[8:]
         pbar.set_description(text)
         D.flush_debug()
-    return text
+    return text, start
 
 def check_not_nan(*a):
     tmp = [torch.isnan(x).sum()>0 for x in a]
