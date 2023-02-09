@@ -1,6 +1,6 @@
 
 
-@REM python main.py --exp_name runs/baseline/fr2  --architecture yolophi --epochs 100 --framerate 2 --skip_train
+@REM python main.py --exp_name runs/baseline/fr2  --architecture yolophi --epochs 100 --framerate 2
 @REM python main.py --exp_name runs/baseline/fr10 --architecture yolophi --epochs 10 --framerate 10
 @REM python main.py --exp_name runs/baseline/fr20 --architecture yolophi --epochs 10 --framerate 20
 

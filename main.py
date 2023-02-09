@@ -95,7 +95,7 @@ def main(args, device):
 
 def center_print(text, pattern=' ', color=0):
     # c   =    yellow       bold      purple       cyan
-    color = ['\033[93m', '\033[1m', '\033[95m', '\033[96m'][int(color%3)]
+    color = ['\033[93m', '\033[1m', '\033[95m', '\033[96m'][int(color%4)]
     cols = os.get_terminal_size().columns
     n_pat = max((cols - len(text) -2)//(2*len(pattern)), 0)
     pattern = pattern * n_pat

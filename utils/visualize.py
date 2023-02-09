@@ -59,7 +59,7 @@ class StatsLogger():
 
         # rescale SVS
         svs_img, pred_boxes = self.clean_svs(svs_img, pred_boxes)
-        svs_img = self.draw_boxes(svs_img, pred_boxes, [1]*len(pred_boxes))
+        svs_img = self.draw_boxes(svs_img, pred_boxes, [1]*len(pred_boxes), drawid=False)
 
         # rescale heatmap
         heat = np.uint8((heat.sigmoid()*255)[...,None].expand(-1,-1,3))
@@ -114,16 +114,17 @@ class StatsLogger():
         img = cv2.putText(img, f'Count:   [{gt_c: 2d} ]  [{pr_c: 2d} ]',   (160, 340), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0))
         return img
 
-    def draw_boxes(self, img, boxes, ids):
+    def draw_boxes(self, img, boxes, ids, drawid=False):
         """draw boxes & ids on frame"""
         boxes = safe_box_cxcywh_to_xyxy(boxes)
         boxes = (boxes * torch.tensor([[img.shape[1],img.shape[0],img.shape[1],img.shape[0]]])).int().tolist()
         for (x1,y1,x2,y2), id in zip(boxes, ids):
             x1,y1,x2,y2 = max(min(x1,img.shape[1]-2), 0),max(min(y1,img.shape[0]-2), 0),max(min(x2,img.shape[1]-1), 1),max(min(y2,img.shape[0]-1), 1)
-            if isinstance(id, torch.Tensor): id = id.item()
+            id = int(id) ; font = 0.5 + (y2-y1-160)/320
             color = tuple([(id * prime + (10+id)*83) % 255 for prime in [643,997,676]])
             img = cv2.rectangle(img, (x1,y1), (x2,y2), color)
-            img = cv2.putText(img, f"{id}", (x1 + 8, y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, 1, color)
+            if drawid:
+                img = cv2.putText(img, f"{id}", (x1 + 8, y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, font, color)
         return img
 
     def clean_svs(self, svs_img, pred_boxes):
