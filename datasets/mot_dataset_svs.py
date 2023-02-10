@@ -35,7 +35,8 @@ class MOTDataset(torch.utils.data.Dataset):
                  aug_affine=True,       # if true use hflip/shift,   else just normalize
                  simulator='static',    # which simulator to use
                  crop_svs=False,        # simulates in high res, will crop later
-                 triggering=False,      # if False drops most of frames that do not contain annotations   
+                 triggering=False,      # if False drops most of frames that do not contain annotations
+                 raw = False,           # return frames without pre-proc (does not discard initial ones & empty) 
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
@@ -50,7 +51,7 @@ class MOTDataset(torch.utils.data.Dataset):
 
         if cache_path is None or not os.path.exists(cache_path):
             # simulator:  frame --> motion_map
-            foresensor = Simulator(svs_close, svs_open, svs_hot, self.IMG_SHAPE) # TODO: option to use other types of SVS (simple & evolutive)
+            foresensor = Simulator(svs_close, svs_open, svs_hot)
 
             # load videos[(img_path, boxes)]
             videos = load_data(mot_path, select_video, framerate, is_train, use_cars)
@@ -59,8 +60,7 @@ class MOTDataset(torch.utils.data.Dataset):
             # data[(video_frame, svs_img, boxes, obj_ids)]
             self.data = []
             for video in videos:
-                samples = simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE, is_train, crop_svs)
-                self.data += samples[max(2, len(samples)//4):]
+                self.data.append(simulate_svs(foresensor, video, self.aug_color, self.IMG_SHAPE, is_train, crop_svs))
             
             if cache_path is not None:
                 # save in file_system
@@ -71,7 +71,15 @@ class MOTDataset(torch.utils.data.Dataset):
             with open(cache_path, 'rb') as f_data:
                 self.data = pickle.load(f_data)
         
-        if not triggering:
+        if raw: 
+            # keep all frames
+            self.data = sum(self.data, [])
+        else:   
+            # discard first 1/4 frames (gives time to adapt to simulator)
+            self.data = sum([vid[max(2, len(vid)//4):] for vid in self.data], [])
+        
+        if not (raw or triggering):
+            # drops most frames without BB to improve detections
             self.data = [x for x in self.data if self.allow_empty(x[2])]
 
     def __len__(self):
@@ -178,7 +186,8 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
     boxes = []
     obj_id = []
     infos = []
-    for i, (im_path, gt) in enumerate(data[:60]):  #NOTE: max 60 frames x sequence to speed up
+    ff = min(len(data), 120) ; ii = max(0, ff-80) #NOTE: max 80 frames x sequence to speed up
+    for i, (im_path, gt) in enumerate(data[ii:ff]):  
         # augment input video color
         img = Image.open(im_path)
         if i==0:

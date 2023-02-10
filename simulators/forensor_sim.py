@@ -10,7 +10,7 @@ import cv2
 
 class StaticSVS():
     name = 'static'
-    def __init__(self, d_close=1, d_open=3, d_hot=5, img_shape=(128,160)):
+    def __init__(self, d_close=1, d_open=3, d_hot=5):
         # Algorithm parameters
         self.erosion_kernel = np.ones((3, 3), np.uint8)
         self.open = d_open
@@ -19,8 +19,8 @@ class StaticSVS():
 
     def init_video(self, init_threshold, std):
         """initial values for the threshold (background image without any moving object)"""
-        self.Threshold_H = init_threshold+(std/2).astype(np.uint8)
-        self.Threshold_L = init_threshold-(std/2).astype(np.uint8)
+        self.Threshold_H = (init_threshold+(std/2)).astype(np.int)
+        self.Threshold_L = (init_threshold-(std/2)).astype(np.int)
 
 
     def __call__(self, frame):

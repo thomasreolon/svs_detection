@@ -74,7 +74,7 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
             curr_video = info.split(';')[0] +':'+ info.split(';')[-1]
             logger.collect_stats(f'{v_split}:{curr_video}', count, pred, boxes)
             if curr_video != prev_video:
-                if i != 0:
+                if j != 0:
                     loss_obj, loss_box, loss_cnt = torch.stack(cumloss, 1).mean(1).cpu().tolist()
                     logger.log(f'[{v_split}:{prev_video}] loss_obj={loss_obj:.3e} loss_box={loss_box:.3e} loss_cnt={loss_cnt:.3e}\n')
                 cumloss = [] ; prev_video = curr_video

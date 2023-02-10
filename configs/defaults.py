@@ -12,7 +12,7 @@ def get_args_parser():
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
     
     # Model Settings
-    parser.add_argument('--architecture', default='mlp2', type=str,             help='mlp, mlp2, yolo5, yolophi, yolo8')
+    parser.add_argument('--architecture', default='yolophi', type=str,             help='mlp, mlp2, yolo5, yolophi, yolo8')
     parser.add_argument('--simulator', default='static', type=str,              help='static, simple, evolution')
     parser.add_argument('--pretrained', default='<auto>', type=str,             help='path to checkpoint, auto will search in output+expname path')
 

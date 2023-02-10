@@ -110,6 +110,6 @@ if __name__=='__main__':
     args.use_cars=True
     args.crop_svs=True
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    init_seeds(42)
+    init_seeds(100)
 
     main(args, device)
