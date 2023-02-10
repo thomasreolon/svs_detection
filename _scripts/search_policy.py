@@ -22,6 +22,7 @@ def main(args):
     model = None
     stats = []
 
+    num = 0
     for fps in [2,4,0.5,1,10]:
         # framerates
         args.framerate = fps
@@ -33,8 +34,14 @@ def main(args):
             imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
             imgs = np.uint8(imgs)
             
-            tgs[:,0] -= n//7
-            for params in [(1,3,5), (1,2,3), (2,3,10), (4,2,5), (3,2,10)]:
+            gt_boxes = tgs.clone().to(DEVICE)
+            gt_boxes[:,0] -= n//7
+            gt_boxes = gt_boxes[gt_boxes[:,0]>=0]
+
+            PAR = [(1,2,3), (3,1,5), (2,4,10), (3,2,10), (2,2,3), (1,1,4)]
+            all_params = [rand_param() for _ in range(7)] + [(1,3,5)] + [x for x in PAR if np.random.rand()>.5]
+
+            for params in all_params:
                 try:
                     # process video
                     simulator.open = params[1] ; simulator.close = params[0] ; simulator.dhot = params[2]
@@ -45,17 +52,37 @@ def main(args):
 
                     # train NN
                     model, optimizer, loss_fn = load_pretrained(args, DEVICE, model)
+                    nn_svss = (((torch.from_numpy(np.stack(svss)).clone()/255) -.1)/.9).permute(0,3,1,2)
+                    nn_svss = nn_svss.to(DEVICE)
                     model.train()
-                    for _ in tqdm(range(40),leave=False,desc='train'):
-                        nn_svss, nn_gt = fast_aug(imgs[n//7:], tgs.clone().to(DEVICE))
-                        nn_svss=nn_svss.to(DEVICE)
-                        _, y, count = model(nn_svss)
-                        # Loss
-                        loss, _ = loss_fn(y, nn_gt, count)
-                        loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-                        optimizer.step()
-                        optimizer.zero_grad()
+                    pbar = tqdm(range(4),leave=False)
+                    for _ in pbar:
+                        for i in [n//5, -1, n*2//3]:
+                            if i>0:
+                                x, y = nn_svss[:i], gt_boxes[gt_boxes[:,0]<i]
+                            else:
+                                x, y = fast_aug(svss, gt_boxes.clone())
+                                x = x.to(DEVICE)
+
+                            # for j in range(len(x)):
+                            #     pred = (y[y[:,0]==j,2:].clone().cpu() * torch.tensor([160,128,160,128])).int()
+                            #     tmp = ((x[j:j+1].clone()*.9+.1)*255).permute(0,2,3,1).cpu().numpy()[0]
+                            #     for (xc,yc,w,h) in pred.tolist():
+                            #         x1,y1,x2,y2 = xc-w//2, yc-h//2, xc+w//2, yc+h//2
+                            #         tmp[y1:y2, x1:x1+2] = 128
+                            #         tmp[y1:y2, x2:x2-2] = 128
+                            #         tmp[y1:y1+2, x1:x2] = 128
+                            #         tmp[y2:y2-2, x1:x2] = 128
+                            #     cv2.imshow('tmp',np.uint8(tmp))
+                            #     cv2.waitKey()
+
+                            _, y_p, count = model(x)
+                            loss, _ = loss_fn(y_p, y, count)
+                            loss.backward()
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+                            optimizer.step()
+                            optimizer.zero_grad()
+                            pbar.set_description(f'[{num}] train loss: {loss.item()}')
 
                     # get scores pt.1
                     all_scores = [] ; all_heuristic = [] ; all_losses = []
@@ -65,23 +92,21 @@ def main(args):
 
                     # get scores pt.2
                     model.eval()
-                    nn_svss = (((torch.from_numpy(np.array(svss))/255) -.1)/.9).permute(0,3,1,2)
-                    nn_svss = nn_svss.to(DEVICE)
                     with torch.no_grad():
                         pred, y, count = model(nn_svss)
-                        loss, l_item = loss_fn(y, tgs, count)
+                        loss, l_item = loss_fn(y, gt_boxes, count)
                         lc = l_item[l_item[:,1]>=0,1].mean().item()
                         all_losses.append([loss.item()-lc*n*6//7,lc])
 
                     # pred = model.model[-1].postprocess(pred, args.detect_thresh, args.nms_iou)
                     # pred = pred[0].reshape(-1,6)[:,:4].cpu().int()
-                    # draw = imgs[0]
+                    # draw = imgs[n//7].copy()
                     # for (x,y,w,h) in pred.tolist():
                     #     x1,y1,x2,y2 = x-w//2, y-h//2, x+w//2, y+h//2
                     #     draw[y1:y2, x1:x1+1] = 255
                     #     draw[y1:y2, x2:x2-1] = 255
-                    #     draw[y1:y1+1, x1:x2] = 0
-                    #     draw[y2:y2-1, x1:x2] = 0
+                    #     draw[y1:y1+1, x1:x2] = 255
+                    #     draw[y2:y2-1, x1:x2] = 255
                     # cv2.imshow('fr', draw)
                     # cv2.waitKey()
 
@@ -92,17 +117,40 @@ def main(args):
                     stats.append([fps, curr_video, params, all_scores, all_heuristic, all_losses])
 
                     # save on file 
-                    if np.random.rand()>0.8:
-                        fps, video, params, scores, heuristics, loss = zip(*stats)
+                    if np.random.rand()>0.9:
+                        a_fps, a_video, a_params, a_scores, a_heuristics, a_loss = zip(*stats)
                         with open(f'{args.out_path}/stats.json', 'w') as ff:
-                            json.dump({'fps':fps, 'video':video, 'params':params, 'scores':scores, 'heuristics':heuristics, 'loss':loss}, ff)
+                            json.dump({'fps':a_fps, 'video':a_video, 'params':a_params, 'scores':a_scores, 'heuristics':a_heuristics, 'loss':a_loss}, ff)
+                    num += 1
                 except Exception as e:
-                    raise e
                     print('FAILED',fps,curr_video,params,e)
     # FINAL SAVE
-    fps, video, params, scores, heuristics, loss = zip(*stats)
+    a_fps, a_video, a_params, a_scores, a_heuristics, a_loss = zip(*stats)
     with open(f'{args.out_path}/stats.json', 'w') as ff:
-        json.dump({'fps':fps, 'video':video, 'params':params, 'scores':scores, 'heuristics':heuristics, 'loss':loss}, ff)
+        json.dump({'fps':a_fps, 'video':a_video, 'params':a_params, 'scores':a_scores, 'heuristics':a_heuristics, 'loss':a_loss}, ff)
+
+
+def rand_param():
+    if np.random.rand()>0.5:
+        # smart
+        params = np.random.rand(3) * (6, 7, 10) + (1,-3,0)
+        params[1] = max(1,params[0]+params[1])
+        params[2] = max(*params[:2]+1,params[2])
+    elif np.random.rand()>0.3:
+        # in scale
+        params = np.random.rand(3) * (5, 10, 15) + 1
+        params[2] = max(*params[:2]+1,params[2])
+    elif np.random.rand()>0.5:
+        # totally random
+        params = 1+np.random.rand(3)**2 *10
+        params[2] = max(*params[:2]+1,params[2])
+    else:
+        # smart 2
+        params = np.random.rand(3) * (10, 1, 20) + (0,0,0)
+        params[0], params[1] = params[1]**2 * params[0], (1-params[1])**2 * params[0]
+        params[2] = max(*params[:2]+1,params[2])
+    return tuple(int(p) for p in params)
+
 
 _w = [None]
 def load_pretrained(args, device='cuda', model=None):
@@ -120,13 +168,13 @@ def load_pretrained(args, device='cuda', model=None):
     model.load_state_dict(_w[0], strict=False)
     return model, optimizer, loss_fn
 
+
 def fast_aug(svss, gt_boxes):
     imgs = [] ; gts = []
     c = 0
-    i = int(np.random.rand()*len(svss))
-    j = int(np.random.rand()**2 *(len(svss)-i))
+    p = 40/len(svss)
     for i, svs in enumerate(svss):
-        if np.random.rand()>0.5: continue
+        if np.random.rand()>p: continue
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
         gt[:,0] = c
@@ -157,20 +205,9 @@ def fast_aug(svss, gt_boxes):
             gt[:, 3] += b/128
             gt = gt[(gt[:,2]>0)&(gt[:,3]>0)&(gt[:,2]<1)&(gt[:,3]<1)]
 
-        # pred = gt.reshape(-1,6)[:,2:].cpu()
-        # pred = (pred * torch.tensor([160,128,160,128])).int()
-        # tmp = svs.copy()
-        # for (x,y,w,h) in pred.tolist():
-        #     x1,y1,x2,y2 = x-w//2, y-h//2, x+w//2, y+h//2
-        #     tmp[y1:y2, x1:x1+2] = 128
-        #     tmp[y1:y2, x2:x2-2] = 128
-        #     tmp[y1:y1+2, x1:x2] = 128
-        #     tmp[y2:y2-2, x1:x2] = 128
-        # cv2.imshow('fr', tmp)
-        # cv2.waitKey()
-
         imgs.append(svs)
         gts.append(gt)
+        if len(imgs)==32: break
     gts = torch.cat(gts, dim=0)
     imgs = (((torch.from_numpy(np.array(imgs))/255) -.1)/.9).permute(0,3,1,2)
     return imgs, gts
