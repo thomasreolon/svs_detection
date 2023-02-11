@@ -70,33 +70,67 @@ class BlockMLPv2(nn.Module):
         return y
 
 
+def getdownsampler(n, ch, m):
+    n = int(n) % 4
+    if n==0:
+        return nn.Sequential(
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(ch),
+            nn.Conv2d(ch, ch, 3, padding=1, groups=ch),
+            nn.Conv2d(ch, ch, 1),
+            nn.ReLU(),
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+            )
+    if n==1:
+        return nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+    if n==2:
+        return nn.Sequential(
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+        )
+    if n==3:
+        return nn.Sequential(
+            BlockMLPv2(ch_in=ch,ch_out=ch, mlp_size=m),
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
+        )
+
+
 
 class MLPDetectorv2(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
     POS = 12
 
-    def __init__(self, ch_in=1):
+    def __init__(self, ch_in=1, usepos=False, ch_mult=1, mlp_size=5, down=0):
         super().__init__()
-        anchors = [[1,4,  4,8,  16,16,  2,2]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        anchors = [[1,4,  4,8, 2,2], [30,61, 17,31, 59,119]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        ch = int(8*ch_mult)
+        emb = 16 if usepos else 0
 
-        self.model = nn.ModuleList([
-            BlockMLPv2(ch_in=ch_in,ch_out=8,mlp_size=5),
+        downsampler = getdownsampler(down, ch*4, mlp_size)
+        modules = [
+            BlockMLPv2(ch_in=ch_in,ch_out=ch,mlp_size=mlp_size),
 
-            BlockMLPv2(ch_in=8,ch_out=16,mlp_size=6),
+            BlockMLPv2(ch_in=ch,ch_out=ch*2,mlp_size=mlp_size+1),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
-            BlockMLPv2(ch_in=16,ch_out=32,mlp_size=5),
+            BlockMLPv2(ch_in=emb+ch*2,ch_out=ch*4,mlp_size=mlp_size),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
-            Detect(1, anchors, [32]),
-        ])
+            downsampler,
+            Detect(1, anchors, [ch*4, ch*4]),
+        ]
+        if usepos:
+            modules.insert(3, AppendPosEmbedd(16))
+
+        self.model = nn.ModuleList(modules)
         self.model[-1].stride = torch.tensor([4, 4])
         self._init_weights()
 
     def forward(self, x):
-        for m in self.model[:-1]:
+        for m in self.model[:-2]:
             x = m(x)
-        return self.model[-1]([x])
+        y = self.model[-2](x)
+        return self.model[-1]([y, x])
 
     @torch.no_grad()
     def _init_weights(self):

@@ -78,7 +78,7 @@ def main(args, device):
     ## Test
     t = logger.log_time()
     center_print(f'Starting Evaluation ({t})', ' .')
-    for is_train in [False, True]:
+    for is_train in [True, False]:
         # Load train/test dataset
         dataset = FastDataset(args, is_train, False)
 
@@ -87,10 +87,12 @@ def main(args, device):
 
         # Print Some Infos
         center_print(f'Stats for Eval: {"Train" if is_train else "Test"}', '.-\'-_', 2+int(is_train))
-        print('... TODO')
+        stats = logger.log_stats()
+        center_print(str(stats), '.-\'-_', 2+int(is_train))
+
 
     # Log Results
-    logger.log_time() ; logger.log_stats() ; logger.close()
+    logger.log_time() ; logger.close()
 
 
 def center_print(text, pattern=' ', color=0):

@@ -10,6 +10,7 @@ import torchvision.transforms.functional as F
 import torch
 
 from datasets.transforms import augment_color, get_mask, letterbox, gettransforms_post
+from .map import update_map, get_map
 
 class StatsLogger():
     VIS_SIZE = (640, 800)
@@ -18,7 +19,7 @@ class StatsLogger():
         self.out_path = f'{args.out_path}/{args.exp_name}/main_logs/'
         os.makedirs(self.out_path, exist_ok=True)
         self.start_time = time.time()
-        self.stats = defaultdict(lambda: [np.zeros((2,2)), []])
+        self.stats = defaultdict(lambda: [np.zeros((2,2)), [], []])
 
         self.logtxt, self.logtxt_name = None, self.out_path+f'logs.txt'
         self.transform = gettransforms_post(False, (640,800))
@@ -173,27 +174,49 @@ class StatsLogger():
         return img
 
     def collect_stats(self, vid, count, pred, boxes):
-        cm, c_err = self.stats[vid]
+        cm, c_err, map_stats = self.stats[vid]
+        # triggering
         r,p = int(len(boxes)>0), int(count[0]>.5)
         cm[p,r] += 1
+
+        # counting
         c_err.append((count[1]-len(boxes)).abs())
+
+        # MaP
+        update_map(pred, boxes, map_stats)
 
     def log_stats(self):
         self.log('_____________STATS____________\n')
         cum = []
-        for vid, (cm, c_err) in self.stats.items():
+        for vid, (cm, c_err, map_stats) in self.stats.items():
+            # triggering
             acc = cm.diagonal().sum() / cm.sum()
             pr = cm[1,1] / (cm[:,1].sum()+1e-8)
             rc = cm[1,1] / (cm[1,:].sum()+1e-8)
+            trig = f' Triggering[accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}] '
+
+            # counting
             c_err = np.array(c_err)
             em, es = c_err.mean(), c_err.std()
-            text = f'[{vid}] Detection[accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}]  Count[meanerr={em:.2f}  std={es:.1e}]\n'
+            count = f' Count[meanerr={em:.2f}] '
+
+            # detection
+            mp, mr, ap50, map = get_map(map_stats)
+            det = f' Detection[meanprec={mp:.2f}  meanrec={mr:.2f}  aP50={ap50:.2f}  MaP={map:.2f}]\n'
+
+            # Log
+            text = f'[{vid}] '+ trig + count + det
             self.log(text)
-            if 'test' in vid:
-                cum.append([acc,pr,rc])
-        acc,pr,rc = np.array(cum).mean(axis=0).tolist()
-        text = f'>> Averaged Stats For Testset [accuracy={acc:.2f}  precision={pr:.2f}  recall={rc:.2f}]\n'
+            cum.append([acc,pr,rc,em,ap50,map])
+            set_ = 'Test' if 'test' in vid else 'Train'
+        acc,pr,rc,em,ap50,map = np.array(cum).mean(axis=0).tolist()
+        text = f'>> Averaged Stats For {set_}set\n'\
+               f'TR[accuracy={acc:.3f}  precision={pr:.3f}  recall={rc:.3f}]\n' \
+               f'CN[meanarr={em:.3f}]\n' \
+               f'DE[map={map:.3f}  ap50={ap50:.3f}]\n'
         self.log(text)
+        self.stats = defaultdict(lambda: [np.zeros((2,2)), [], []])
+        return {'T_accuracy':acc, 'T_precision':pr, 'T_recall':rc, 'C_meanerror':em, 'D_ap50':ap50, 'D_MaP':map}
 
 def safe_box_cxcywh_to_xyxy(x, m_ = 1e-2):
     m_ = torch.tensor([m_],device=x.device,dtype=x.dtype)

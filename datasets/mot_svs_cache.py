@@ -37,9 +37,10 @@ class FastDataset(torch.utils.data.Dataset):
 
     def drop(self, names):
         "drops dataset with key similar to to ones specified in names"
+        keys = list(self.datasets.keys())
         for n in names:
-            for k in self.datasets:
-                if n in k:
+            for k in keys:
+                if n in k and k in self.datasets:
                     del self.datasets[k]
 
     @staticmethod
@@ -84,6 +85,14 @@ def get_configs(args, is_train, aug_affine):
                 'select_video':'synth',
                 'is_train':True,  
                 'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':aug_affine,
+                'triggering':False,   
+            },
+            'synth-dark':{
+                # all videos from TOMDataset without augmentations
+                'select_video':'synth-7',
+                'is_train':True,  
+                'aug_color':{'brightness':0.4, 'contrast':0.3, 'saturation':0.4, 'sharpness':0.5, 'hue':0.6, 'gamma':0.2, 'noise':None}, 
                 'aug_affine':aug_affine,
                 'triggering':False,   
             },

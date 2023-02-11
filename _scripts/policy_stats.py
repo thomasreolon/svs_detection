@@ -4,6 +4,7 @@ import cv2
 import torch
 import numpy as np
 import json
+import os
 
 from datasets.simulation_ds import SimulationFastDataset
 from torch.utils.data import DataLoader
@@ -18,12 +19,20 @@ PRETRAINED = 'C:/Users/Tom/Desktop/svs_detection/_outputs/phi_pretrain.pt'
 DEVICE = 'cuda'
 
 def main(args):
+    save_path = f'{args.out_path}/stats.json'
     simulator = StaticSVS(args.svs_close, args.svs_open, args.svs_hot)
     model = None
-    stats = []
+    stats = [] ; done = set()
 
-    num = 0
-    for fps in [2,4,0.5,1,10]:
+    if os.path.exists(save_path):
+        with open(save_path, 'r') as fin:
+            stats = json.load(fin)
+            done  = {f'{f}{v}{p}' for f,v,p in zip(stats['fps'], stats['video'], stats['params'])}
+            done.union({f'{f}{v}' for f,v,p in zip(stats['fps'], stats['video'], stats['params'])})
+            stats = list(zip( stats['fps'], stats['video'], stats['params'], stats['scores'], stats['heuristics'], stats['loss'] ))
+
+    num = len(stats)
+    for fps in reversed([2,4,0.5,1,10]):
         # framerates
         args.framerate = fps
         dataloader = DataLoader(SimulationFastDataset(args, 80), batch_size=1, collate_fn=SimulationFastDataset.collate_fn, shuffle=False)
@@ -40,8 +49,10 @@ def main(args):
 
             PAR = [(1,2,3), (3,1,5), (2,4,10), (3,2,10), (2,2,3), (1,1,4)]
             all_params = [rand_param() for _ in range(7)] + [(1,3,5)] + [x for x in PAR if np.random.rand()>.5]
+            if f'{fps}{curr_video}' in done: all_params = [(1,3,5)] + [x for x in PAR if np.random.rand()>.8]
 
             for params in all_params:
+                if f'{fps}{curr_video}{params}' in done: continue
                 try:
                     # process video
                     simulator.open = params[1] ; simulator.close = params[0] ; simulator.dhot = params[2]
@@ -119,14 +130,14 @@ def main(args):
                     # save on file 
                     if np.random.rand()>0.9:
                         a_fps, a_video, a_params, a_scores, a_heuristics, a_loss = zip(*stats)
-                        with open(f'{args.out_path}/stats.json', 'w') as ff:
+                        with open(save_path, 'w') as ff:
                             json.dump({'fps':a_fps, 'video':a_video, 'params':a_params, 'scores':a_scores, 'heuristics':a_heuristics, 'loss':a_loss}, ff)
                     num += 1
                 except Exception as e:
                     print('FAILED',fps,curr_video,params,e)
     # FINAL SAVE
     a_fps, a_video, a_params, a_scores, a_heuristics, a_loss = zip(*stats)
-    with open(f'{args.out_path}/stats.json', 'w') as ff:
+    with open(save_path, 'w') as ff:
         json.dump({'fps':a_fps, 'video':a_video, 'params':a_params, 'scores':a_scores, 'heuristics':a_heuristics, 'loss':a_loss}, ff)
 
 

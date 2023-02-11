@@ -193,7 +193,7 @@ class ComputeLoss:
         pr_count = counts[:,1] + (counts[:,0].detach()>0).float()
         c_loss1  = self.cl1(pr_count, gt_count) / (gt_count+2)
         lcnt = c_loss1+c_loss2
-        lcnt_items = lcnt.detach()   # count loss for logging
+        lcnt_items = lcnt   # count loss for logging
         lcnt = lcnt.mean()
 
         # Losses
@@ -227,7 +227,7 @@ class ComputeLoss:
                 # iou = -(pbox*1.3-tbox[i]*1.3).abs().sum(dim=1)
                 # lbox += ((1.0 - iou)*coeff).mean()  # iou loss
 
-                tmp=[torch.nan_to_num(1-iou[b==i].mean().detach(), -1).view(1) for i in range(bs)]
+                tmp=[torch.nan_to_num(1-iou[b==i].mean(), -1).view(1) for i in range(bs)]
                 lbox_items += torch.cat(tmp)
 
                 if i==0:D.debug_regression(b==0, pbox, tbox[i])
@@ -253,7 +253,7 @@ class ComputeLoss:
 
             obji = self.BCEobj(pi[..., 4], tobj)
 
-            tmp=[obji[i].mean().detach().view(1) for i in range(bs)]
+            tmp=[obji[i].mean().view(1) for i in range(bs)]
             lobj_items += torch.cat(tmp)
 
             obji = obji.mean()

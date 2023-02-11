@@ -18,6 +18,7 @@ def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
 
         # Loss
         loss, l_item = loss_fn(y, gt_boxes, count)
+        l_item = l_item.detach()
         lo = l_item[:,0].mean() ; lb = l_item[l_item[:,1]>=0,1].mean() ; lc = l_item[l_item[:,1]>=0,1].mean()
         check_not_nan(lo, lb, lc)
 
@@ -57,6 +58,7 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
         # Inference
         preds, y, counts = model(imgs)
         _, l_items = loss_fn(y, tgs, counts)
+        l_items = l_items.detach()
         preds = model.model[-1].postprocess(preds, args.detect_thresh, args.nms_iou)
 
         # Log Stats
@@ -66,12 +68,13 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
             if is_train and i%20!=0: continue # speeds up video generation by skipping frames for training set
 
             # create infographics
-            boxes = tgs[tgs[:,0]==i, 2:].cpu()
-            pred = pred[:,:4].cpu()
-            logger.visualize(info, img, boxes, id, pred, heat, count)
+            boxes = tgs[tgs[:,0]==i, 1:].cpu()
+            pred = pred.cpu()
+            logger.visualize(info, img, boxes[:,1:], id, pred[:,:4], heat, count)
 
             # log loss for every video
             curr_video = info.split(';')[0] +':'+ info.split(';')[-1]
+            pred[:, :4] /= torch.tensor([160,128,160,128])
             logger.collect_stats(f'{v_split}:{curr_video}', count, pred, boxes)
             if curr_video != prev_video:
                 if j != 0:
