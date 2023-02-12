@@ -3,6 +3,7 @@ import torch, torch.nn as nn
 
 from ._head import Detect
 from ._blocks import MLP, CrossConv
+from .yolov5.models.yolo import check_anchor_order 
 
 class AppendPosEmbedd(nn.Module):
     def __init__(self, pos_size=16):
@@ -100,9 +101,9 @@ class MLPDetectorv2(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
     POS = 12
 
-    def __init__(self, ch_in=1, usepos=False, ch_mult=1, mlp_size=5, down=0):
+    def __init__(self, ch_in=1, usepos=False, ch_mult=1, mlp_size=5, down=0, anchors=None):
         super().__init__()
-        anchors = [[1,4,  4,8, 2,2], [30,61, 17,31, 59,119]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        anchors = anchors if anchors else [[10,13, 16,30, 1,5], [44,44, 50,70, 60,110]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
         ch = int(8*ch_mult)
         emb = 16 if usepos else 0
 
@@ -123,7 +124,16 @@ class MLPDetectorv2(nn.Module):
             modules.insert(3, AppendPosEmbedd(16))
 
         self.model = nn.ModuleList(modules)
-        self.model[-1].stride = torch.tensor([4, 4])
+        # Build strides, anchors
+        m = self.model[-1]  # Detect()
+        if isinstance(m, Detect):
+            s = torch.tensor([128,160])
+            with torch.no_grad():
+                self.S = torch.tensor([x.shape[-3:-1] for x in self.forward(torch.zeros(1, ch_in, *s))[1]])
+            m.stride = s / self.S  # forward
+            check_anchor_order(m)  # must be in pixel-space (not grid-space)
+            m.anchors /= m.stride.view(-1, 1, 2)
+            self.stride = m.stride
         self._init_weights()
 
     def forward(self, x):

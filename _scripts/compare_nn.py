@@ -29,9 +29,13 @@ optimizer = torch.optim.AdamW([
 
 dataset = FastDataset(args, True, True)
 tr_loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn, shuffle=True)
-train_one_epoch(tr_loader, model, loss_fn, optimizer, device, 0, False)
+# train_one_epoch(tr_loader, model, loss_fn, optimizer, device, 0, False)
 
+scoremodel = NNScorer(model, loss_fn, 3, device)
 
+_,x,t,_ = next(iter(tr_loader))
+scores = scoremodel.score(x.to(device), t.to(device))
+print(scores)
 
 
 

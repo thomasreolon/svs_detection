@@ -14,8 +14,6 @@ from engine import train_one_epoch, test_epoch
 from utils.scores_nn import get_nn_heuristics
 import utils.debugging as D
 
-
-
 def main(args, device):
     stats = []
     save_path = f'{args.out_path}/nn_stats.json'
@@ -44,7 +42,6 @@ def eval_architecture(args, device, nn):
         ], lr=args.lr/3, weight_decay=2e-5, betas=(0.92, 0.999))
     # Load Dataset
     dataset = FastDataset(args, True, True)
-    todrop = [k for k in dataset.datasets if k not in {'noise', 'synth-dark'}]
     tr_loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn, shuffle=True)
     logger = StatsLogger(args)
 
@@ -53,14 +50,9 @@ def eval_architecture(args, device, nn):
     np=sum(p.numel() for p in model.parameters())
     center_print(f'Starting Training {nn} ({np}param)', ' .')
     mainpbar = tqdm(range(args.epochs))
+
+    heuristics = [get_nn_heuristics(model, loss_fn, tr_loader, device)+[700]]
     for epoch in mainpbar:
-        if epoch == 1:
-            # Heuristics
-            center_print(f'Getting Heuristics', ' .')
-            heuristics = get_nn_heuristics(model, loss_fn, tr_loader, device)
-            loss1 = float(summary.split('loss_tot=')[1].split(' ')[0])
-            heuristics = list(heuristics) + [2000-loss1]
-            print(heuristics)
 
         # One Epoch
         debug = args.debug and epoch in {0,1,4,args.epochs//4,args.epochs//2,args.epochs-1}
@@ -69,14 +61,15 @@ def eval_architecture(args, device, nn):
         if epoch+1==args.epochs//2:
             loss_fn.gr = .5
 
-        if epoch == 2:
-            dataset.drop(['MOT', 'synth']) # change dataset dropping MOT17/Synth videos
-            tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
+        if epoch<2:
+            # Heuristics
+            center_print(f'Getting Heuristics', ' .')
+            loss1 = float(summary.split('loss_tot=')[1].split(' ')[0])
+            heuristics.append(get_nn_heuristics(model, loss_fn, tr_loader, device,epoch+1)+[2000-loss1])
 
     # Test
     init_seeds(12)
-    # dataset = FastDataset(args, False, False)
-    dataset.drop(todrop)
+    dataset = FastDataset(args, False, False)
     te_loader = DataLoader(dataset, batch_size=64, collate_fn=dataset.collate_fn, shuffle=True)
 
     # Inference
@@ -100,6 +93,7 @@ def eval_architecture(args, device, nn):
                 # create infographics
                 boxes = tgs[tgs[:,0]==i, 1:].cpu()
                 pred = pred.cpu() # sorted by confidence
+                pred[:, :4] /= torch.tensor([160,128,160,128])
 
                 # log loss for every video
                 curr_video = info.split(';')[0] +':'+ info.split(';')[-1]
@@ -109,7 +103,7 @@ def eval_architecture(args, device, nn):
     stats = logger.log_stats()
     stats['heuristics'] = heuristics
     stats['n_params'] = sum(p.numel() for p in model.parameters())
-    center_print(f'arch:{nn}     ap:{stats["D_ap50"]}   rc:{stats["T_accuracy"]}       me:{stats["C_meanerror"]}', color=2)
+    center_print(f'arch:{nn}     ap50:{stats["D_ap50"]}   rc:{stats["T_accuracy"]}       me:{stats["C_meanerror"]}', color=2)
     return stats
 
 
@@ -126,21 +120,11 @@ def center_print(text, pattern=' ', color=0):
 
 def get_configs():
     return [
-        ('mlp1', (16,24), 16),
-        ('mlp1', (16,24), 32),
-        ('mlp1', (16,24), 64),
-        ('mlp1', (8,12), 128),
-        ('mlp2', False, 1, 5, 0),
-        ('mlp2', False, 4, 5, 1),  
-        ('mlp2', False, 2, 5, 2),  
-        ('mlp2', False, 1, 5, 3),  
-        ('mlp2', True, 4, 7, 2),  
-        ('mlp2', True, 2, 7, 3),  
+        ('yolophi', 0.33, 0.5, 0.35, 7, 1,   False, True),
         ('yolo5', 0.33, 1),
         ('yolo5', 0.66, 1),
         ('yolo8', 0.33, 1),
         ('yolo8', 0.33, 0.5),
-        ('yolophi', 0.33, 0.5, 0.35, 7, 1,   False, True),
         ('yolophi', 0.33, 0.25, 0.35, 7, 1,   False, True),
         ('yolophi', 0.33, 0.5, 0.35, 7, 1,   False, False),
         ('yolophi', 0.33, 0.5, 0.5,  8, 1,   False, True),
@@ -148,6 +132,16 @@ def get_configs():
         ('yolophi', 0.33, 0.25, 0.35, 7, 1,   True, True),
         ('yolophi', 0.33, 0.25, 0.2,  5, 1.1, False, True),
         ('yolophi', 0.33, 0.5, 0.35, 7, 0.9, False, True),
+        ('mlp2', False, 1, 5, 3),  
+        ('mlp2', False, 1, 5, 0),
+        ('mlp2', False, 4, 5, 1),  
+        ('mlp2', False, 2, 5, 2),  
+        ('mlp2', True, 4, 7, 2),  
+        ('mlp2', True, 2, 7, 3),  
+        ('mlp1', (16,24), 16),
+        ('mlp1', (16,24), 32),
+        ('mlp1', (16,24), 64),
+        ('mlp1', (8,12), 128),
     ]
 
 
@@ -158,7 +152,7 @@ if __name__=='__main__':
     args.use_cars=True
     args.crop_svs=True
     args.debug=False
-    args.epochs=20
+    args.epochs=15
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)
 

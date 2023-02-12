@@ -3,17 +3,18 @@ import torch, torch.nn as nn
 
 from ._head import Detect
 from ._blocks import MLP, EnhanceFeatures
+from .yolov5.models.yolo import check_anchor_order 
 
 class MLPDetector(nn.Module):
     """FFNN(wholeimage), CNN(locality)  --> Detection"""
     HW = [16,24] # low dim map size
     CH = 2+14
 
-    def __init__(self, ch_in=1, hw=None, ch=None):
+    def __init__(self, ch_in=1, hw=None, ch=None, anchors=None):
         super().__init__()
         if hw: self.HW =hw
         if ch: self.CH =ch
-        anchors = [[1,4,  8,8,  1,1], [30,61, 17,31, 59,119]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
+        anchors = anchors if anchors else [[10,13, 16,30, 1,5], [44,44, 50,70, 60,110]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
         hw = self.HW[0] * self.HW[1]
         self.ch_in = ch_in
 
@@ -24,8 +25,16 @@ class MLPDetector(nn.Module):
             nn.Sequential(nn.BatchNorm2d(self.CH*2), nn.UpsamplingBilinear2d(scale_factor=4), nn.Conv2d(self.CH*2, self.CH*2, 3, 1, 1), nn.ReLU()),
             Detect(1, anchors, [self.CH*2, self.CH*2]),
         ])
-        self.model[-1].stride = torch.tensor([128/self.HW[0], 160/self.HW[1]])
-
+        # Build strides, anchors
+        m = self.model[-1]  # Detect()
+        if isinstance(m, Detect):
+            s = torch.tensor([128,160])
+            with torch.no_grad():
+                self.S = torch.tensor([x.shape[-3:-1] for x in self.forward(torch.zeros(1, ch_in, *s))[1]])
+            m.stride = s / self.S  # forward
+            check_anchor_order(m)  # must be in pixel-space (not grid-space)
+            m.anchors /= m.stride.view(-1, 1, 2)
+            self.stride = m.stride
         self._init_weights()
 
     def forward(self, svs_img):

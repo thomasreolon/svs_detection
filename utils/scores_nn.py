@@ -4,15 +4,18 @@ import numpy as np
 from . import xywh2xyxy
 import torch.nn.functional as F
 
-def get_nn_heuristics(model, loss_fn, tr_loader, device):
+def get_nn_heuristics(model, loss_fn, tr_loader, device, batch=0):
     """returns 3 scores about the network, the higher the better"""
     gc.collect(); torch.cuda.empty_cache()
     scoremodel = NNScorer(model, loss_fn, 16, device)
-    _,x,t,_ = next(iter(tr_loader))
+    tr_loader = iter(tr_loader)
+    _,x,t,_ = next(tr_loader)
+    for _ in range(batch):
+        _,x,t,_ = next(tr_loader)
     scores =  scoremodel.score(x.to(device), t.to(device))
 
     #           ntk         relu        jac
-    return 3e5-scores[0], scores[1], (20-scores[2])*22
+    return [3e5-scores[0], scores[1], (20-scores[2])*22]
 
 class NNScorer():
     def __init__(self, model, lossfn, samples_to_use=64, device='cpu') -> None:
@@ -28,14 +31,21 @@ class NNScorer():
 
     def score(self, x, tgs):
         "x.shape[b,1,h,w]"
+
         tgs_ = self.jac_gt(x, tgs)
         x.requires_grad_(True)
+        self.model.K = np.zeros((x.shape[0], x.shape[0]))
         _, y, c = self.model(x) # yolo.Detect output
         _, l = self.lossfn(y, tgs, c)
 
         # score ReLU
+        if self.model.err>0:
+            print(f'errs: {self.model.err}/{self.model.tot}')
+            self.model.err = 0
         _, relu_score = np.linalg.slogdet(self.model.K)
-        
+        if _==0:
+            _, relu_score = np.linalg.slogdet(self.model.K+np.eye(x.shape[0]))
+
         # score jacobs
         jac_score = self.get_jac(x, y, tgs_)
 
@@ -49,21 +59,22 @@ class NNScorer():
 
     def setup_relu(self, model, device):
         """maximixe"""
-        model.K = np.zeros((self.samples_to_use, self.samples_to_use))
+        model.err = 0
+        model.tot = 0
         def counting_forward_hook(module, inp, out):
             try:
                 if isinstance(inp, (tuple,list)):
                     inp = inp[0]
-                inp = inp.view(inp.size(0), -1)
+                inp = inp.view(inp.size(0), -1).detach()
                 x = (inp > 0).float()
                 K = x @ x.t()
                 K2 = (1.-x) @ (1.-x.t())
                 model.K = model.K + K.cpu().numpy() + K2.cpu().numpy()
             except Exception as e:
-                pass
+                model.err += 1
         for _, module in model.named_modules():
             if 'ReLU' in str(type(module)):
-                #hooks[name] = module.register_forward_hook(counting_hook)
+                model.tot += 1
                 module.register_forward_hook(counting_forward_hook)
 
     @torch.no_grad()

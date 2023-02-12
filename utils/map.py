@@ -20,7 +20,6 @@ def update_map(detections, labels, stats):
     device = detections.device
     iouv = torch.linspace(0.5, 0.95, 10, device=device)
     niou = iouv.numel()
-
     if len(labels) and not len(detections):
         correct = torch.zeros(0, niou, dtype=torch.bool, device=device)  # init
         stats.append((correct, *torch.zeros((3, 0), device=device)))
@@ -54,27 +53,6 @@ def process_batch(detections, labels, iouv):
 
 
 
-
-
-
-
-
-
-
-
-    # correct = torch.zeros(detections.shape[0], iouv.shape[0], dtype=torch.bool, device=iouv.device)
-    # iou = box_iou(labels[:, 1:], detections[:, :4])
-    # x = torch.where((iou >= iouv[0]) & (labels[:, 0:1] == detections[:, 5]))  # IoU above threshold and classes match
-    # if x[0].shape[0]:
-    #     matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detection, iou]
-    #     if x[0].shape[0] > 1:
-    #         matches = matches[matches[:, 2].argsort()[::-1]]
-    #         matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
-    #         matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
-    #     matches = torch.from_numpy(matches).to(iouv.device)
-    #     correct[matches[:, 1].long()] = matches[:, 2:3] >= iouv
-    
-    # return ap_per_class(correct, detections[:, 4], detections[:, 5], labels[:, 0])
 
 
 def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names=(), eps=1e-16):
