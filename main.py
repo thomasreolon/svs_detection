@@ -113,6 +113,7 @@ if __name__=='__main__':
     args = get_args_parser().parse_args()
     args.use_cars=True
     args.crop_svs=True
+    args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)
 

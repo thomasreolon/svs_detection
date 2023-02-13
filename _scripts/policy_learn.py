@@ -23,7 +23,7 @@ def main(args, device):
     # settings
     batch_size = 32
     number_forks = 2
-    n_iter = 2000
+    n_iter = 5555
 
     # yolo (differentiable)
     model, optimizer, loss_fn = load_pretrained(args, device)

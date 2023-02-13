@@ -17,7 +17,7 @@ def get_args_parser():
     parser.add_argument('--pretrained', default='<auto>', type=str,             help='path to checkpoint, auto will search in output+expname path')
 
     # Configuration Setting
-    parser.add_argument('--framerate', default=10, type=int)
+    parser.add_argument('--framerate', default=2, type=float)
     parser.add_argument('--svs_close', default=1, type=int)
     parser.add_argument('--svs_open', default=3, type=int)
     parser.add_argument('--svs_hot', default=5, type=int)

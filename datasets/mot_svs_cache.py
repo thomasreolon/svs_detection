@@ -6,8 +6,6 @@ from tqdm import tqdm
 from .mot_dataset_svs import MOTDataset
 
 
-
-
 class FastDataset(torch.utils.data.Dataset):
     """Wrapper To Load Multiple Dataset Faster"""
 
@@ -53,8 +51,9 @@ def get_cache_path(args, v):
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([f'{x:.2f}' for x in v["aug_color"]["noise"]])
     selection = ','.join(sorted(v["select_video"])) if isinstance(v["select_video"], list) else v["select_video"]
     triggering = '_TRG' if v["triggering"] else ''
+    svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' if v["simulator"]!='grey' else ''
     return  f'{args.out_path}/_ds_cache/ds' \
-            f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' \
+            f'{svs}' \
             f'_SEL[{selection}]' \
             f'_FRM[{v["framerate"]}]' \
             f'_CAR[{int(v["use_cars"])}]' \
@@ -66,7 +65,6 @@ def get_cache_path(args, v):
                  f'{v["aug_color"]["saturation"]:.2f},{v["aug_color"]["sharpness"]:.2f},' \
                  f'{v["aug_color"]["hue"]:.2f},{v["aug_color"]["gamma"]:.2f},{noise}]' \
              '.pkl'
-
 
 def get_configs(args, is_train, aug_affine):
     st0 = np.random.get_state()
