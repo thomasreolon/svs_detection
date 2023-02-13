@@ -1,3 +1,8 @@
+"""
+util script that generates all the dataset pickled files
+(instead of generating them at runtime)
+"""
+
 from tqdm import tqdm
 import sys, pathlib ; sys.path.append(pathlib.Path(__file__).parent.resolve().__str__() + '/..')
 

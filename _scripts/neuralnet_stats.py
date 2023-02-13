@@ -1,3 +1,10 @@
+"""
+part. 1
+get some heuristics about neural networks: NTK, RELU, LOSS, JACOB
+we then train a net for 15 epochs and get the MaP score
+--> we will use these stats to understand if the heuristics are good or not
+"""
+
 import sys, pathlib ; sys.path.append(pathlib.Path(__file__).parent.resolve().__str__() + '/..') # allows import from home folder
 from tqdm import tqdm
 import os
@@ -123,7 +130,9 @@ def get_configs():
         ('yolophi', 0.33, 0.5, 0.35, 7, 1,   False, True),
         ('yolo5', 0.33, 1),
         ('yolo5', 0.66, 1),
+        ('yolo5', 0.66, .5),
         ('yolo8', 0.33, 1),
+        ('yolo8', 0.2 , .7),
         ('yolo8', 0.33, 0.5),
         ('yolophi', 0.33, 0.25, 0.35, 7, 1,   False, True),
         ('yolophi', 0.33, 0.5, 0.35, 7, 1,   False, False),

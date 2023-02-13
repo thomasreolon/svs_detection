@@ -1,3 +1,9 @@
+"""
+part. 1
+get some heuristics about simulator: white pixels per video, connected components, stability, ...
+we then train a net for 4 epochs on separate videos to get loss values (getting meaningful MaP would mean training the net for much more time..)
+--> we will use these stats to understand if the heuristics can help predict the loss
+"""
 import sys, pathlib ; sys.path.append(pathlib.Path(__file__).parent.resolve().__str__() + '/..') # allows import from home folder
 from tqdm import tqdm
 import cv2

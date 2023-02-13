@@ -4,6 +4,10 @@ import numpy as np
 from . import xywh2xyxy
 import torch.nn.functional as F
 
+def predict_map(ntk, grd, loss):
+  ntk = np.nan_to_num(np.log(ntk), nan=-10)
+  return 0.00218927*ntk + -0.00143292*grd + -0.00025612*loss + 0.8031
+
 def get_nn_heuristics(model, loss_fn, tr_loader, device, batch=0):
     """returns 3 scores about the network, the higher the better"""
     gc.collect(); torch.cuda.empty_cache()
@@ -106,6 +110,24 @@ class NNScorer():
             num = grad[grad>0].mean()
             num = num if not torch.isnan(num) else 2e-5
             den = grad[truth].mean().clip(min=1e-5) if truth.sum()>0 else torch.ones(1,device=y.device)
+            score.append((1+num/den).log().item())
+        return sum(score) / len(score)
+        
+    def get_jac_v2(self, x, tmpy, tgs):
+        """minimize"""
+        score = [] ; y=0
+        for y_ in tmpy:
+            y_ = F.adaptive_avg_pool2d(y_[...,4],x.shape[2:])
+            y = y+y_.sum(1)
+        y = y[tgs].sum()
+        self.model.zero_grad()
+        y.backward(retain_graph=True)
+
+        for grad, truth in zip(x.grad, tgs):
+            grad = grad.squeeze(0).detach()
+            num = grad[grad>0].mean().abs()
+            num = num if not torch.isnan(num) else 2e-5
+            den = grad[truth].mean().abs().clip(min=1e-5) if truth.sum()>0 else torch.ones(1,device=y.device)
             score.append((1+num/den).log().item())
         return sum(score) / len(score)
         
