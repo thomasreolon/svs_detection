@@ -68,9 +68,10 @@ def main(args, device):
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
-            if args.triggering and epoch+1==args.epochs*9//10:
+            if epoch+1==args.epochs*9//10:
                 logger.log('>> changing dataset \n')
-                dataset.drop(['MOT', 'synth']) # change dataset dropping MOT17/Synth videos
+                if args.triggering: dataset.drop(['mot17', 'synth'])            # change dataset dropping MOT17/Synth videos
+                else: dataset.drop(['mydataset', 'darker', 'noise', 'mot17'])   # change dataset dropping mydataste/mot
                 tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
@@ -81,6 +82,7 @@ def main(args, device):
     for is_train in [True, False]:
         # Load train/test dataset
         dataset = FastDataset(args, is_train, False)
+        if args.triggering: dataset.drop(['synth']) # change dataset dropping MOT17/Synth videos
 
         # Inference
         test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)     

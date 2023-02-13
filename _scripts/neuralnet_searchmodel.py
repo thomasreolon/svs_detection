@@ -21,6 +21,8 @@ from models import build_special as build_model, ComputeLoss
 from engine import train_one_epoch
 from utils.scores_nn import get_nn_heuristics, predict_map
 
+
+#### NOTE: there is a memory leak... so it becomes slow after a bit
 def main(args, device):
     stats = []
     save_path = f'{args.out_path}/nn_stats.json'
@@ -54,7 +56,7 @@ def eval_architecture(args, device, nn):
     tr_loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=dataset.collate_fn, shuffle=True)
 
     # Train
-    init_seeds(11)
+    init_seeds(291098)
     loss = 0
     for epoch in range(2):
         summary, _ = train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, False)
@@ -107,6 +109,6 @@ if __name__=='__main__':
     args.debug=False
     args.epochs=15
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    init_seeds(100)
+    init_seeds(5)
 
     main(args, device)

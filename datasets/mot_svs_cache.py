@@ -69,6 +69,7 @@ def get_cache_path(args, v):
 
 
 def get_configs(args, is_train, aug_affine):
+    st0 = np.random.get_state()
     np.random.seed(seed=42)
     if is_train:
         configs =  {
@@ -134,25 +135,22 @@ def get_configs(args, is_train, aug_affine):
                 'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':(.2,.7,.2,.6)}, 
                 'aug_affine':False,
                 'triggering':args.triggering,    
-            }}
-        if not args.triggering:
-            # if 
-            configs.update({
-                'synth':{
-                    'select_video':'synth',
-                    'is_train':False,  
-                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                    'aug_affine':False,
-                    'triggering':False,    
-                },
-                'synth_darknoise':{
-                    'select_video':'synth',
-                    'is_train':False,  
-                    'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.4, 'hue':0.5, 'gamma':0.1, 'noise':(.2,.7,.2,.6)}, 
-                    'aug_affine':False,
-                    'triggering':False,    
-                },
-            })
+            },
+            'synth':{
+                'select_video':'synth',
+                'is_train':False,  
+                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                'aug_affine':False,
+                'triggering':False,    
+            },
+            'synth_darknoise':{
+                'select_video':'synth',
+                'is_train':False,  
+                'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.4, 'hue':0.5, 'gamma':0.1, 'noise':(.2,.7,.2,.6)}, 
+                'aug_affine':False,
+                'triggering':False,    
+            },
+            }
     for v in configs.values():
         v.update({
             'mot_path':args.mot_path,
@@ -164,6 +162,7 @@ def get_configs(args, is_train, aug_affine):
             'simulator':args.simulator,
             'crop_svs':args.crop_svs,
         })
+        np.random.set_state(st0)
 
     return configs
          

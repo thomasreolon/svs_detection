@@ -1,15 +1,23 @@
 import numpy as np
 import torch
+import random
+import numpy as np
 from .visualize import StatsLogger
 
 
 def init_seeds(n):
-    import torch
-    torch.manual_seed(n)
-    import random
-    random.seed(n)
-    import numpy as np
-    np.random.seed(n)
+    old_seed = (torch.seed(), np.random.get_state())
+    if isinstance(n,tuple):
+        torch.manual_seed(n[0])
+        random.seed(n[0])
+        np.random.set_state(n[1])
+    else:
+        torch.manual_seed(n)
+        random.seed(n)
+        np.random.seed(n)
+    return old_seed
+
+
 
 def xywh2xyxy(x):
     # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
