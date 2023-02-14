@@ -5,7 +5,6 @@ the simulator will use this model to update his own parameters
 """
 import sys, pathlib ; sys.path.append(pathlib.Path(__file__).parent.resolve().__str__() + '/..') # allows import from home folder
 from tqdm import tqdm
-import cv2
 import torch
 import numpy as np
 from copy import deepcopy
@@ -13,17 +12,16 @@ from copy import deepcopy
 from datasets.simulation_ds import SimulationFastDataset
 from configs.defaults import get_args_parser
 from utils import init_seeds, StatsLogger
-from simulators.evolutive import EvolvedSVS
+from simulators.rlearn import RLearnSVS
 from models import build as build_model, ComputeLoss
 
 PRETRAINED = 'C:/Users/Tom/Desktop/svs_detection/_outputs/phi_pretrain.pt'
-POLICY = 'C:/Users/Tom/Desktop/svs_detection/_outputs/basepolicy.pt'
 
 def main(args, device):
     # settings
     batch_size = 32
-    number_forks = 2
-    n_iter = 5555
+    number_forks = 4
+    n_iter = 200
 
     # yolo (differentiable)
     model, optimizer, loss_fn = load_pretrained(args, device)
@@ -31,12 +29,11 @@ def main(args, device):
     logger = StatsLogger(args)
 
     # simulator (non differentiable)
-    save_path = f'{args.out_path}/policy.pt'
-    simulator = EvolvedSVS(args.svs_close, args.svs_open, args.svs_hot, batch_size)
+    save_path = f'./policy.pt'
+    simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, batch_size)
     simulator.pred_reward.train()
-    sim_opt = torch.optim.AdamW(simulator.pred_reward.parameters(), lr=1e-3)
+    sim_opt = torch.optim.AdamW(simulator.pred_reward.parameters(), lr=2e-4)
 
-    torch.autograd.set_detect_anomaly(True)
 
     v = 4
     pbar = tqdm(range(n_iter))
@@ -67,7 +64,7 @@ def main(args, device):
                 # train NN
                 for ex in range(5):
                     oldseed = init_seeds(e*900+v*100+ex)
-                    x,y = transform(xt.copy(), y_.clone())
+                    x,y = transform(xt.copy(), y_.clone(), ex!=4)
 
                     x,y = x.to(device), y.to(device)
                     _, y_p, count = model(x)
@@ -82,30 +79,39 @@ def main(args, device):
                 
                 # save fork results
                 state = get_state(model, simulator, optimizer)
-                loss = loss.item()
+                loss = float(loss.item())
                 pred = simulator._pred
+
                 results.append((state, loss, pred))
 
             # train reward predictor
             sim_loss = 0
             state, loss, pred = results[0]  # action 0 results
             for ex, (_, l, p) in enumerate(results):
-                reward = (loss-l)/(1+abs(loss))*10 # reward for changing parameters
-                tqdm.write(f'>> {reward}')
+                reward = (loss-l)/(1+abs(loss))*20 # reward for changing parameters
                 sim_loss = sim_loss + (p-reward)**2
+                print('--loss', p,reward)
             sim_loss.backward()
-            sim_opt.step()
+            if torch.isnan(list(simulator.pred_reward.parameters())[0].grad).sum()==0:
+                torch.nn.utils.clip_grad_norm_(simulator.pred_reward.parameters(), 1)
+                sim_opt.step()
+            else:
+                print('\nSKIP, NAN ')
             sim_opt.zero_grad()
 
             # new state: the one with smallest loss
-            l = min(*[x[1] for x in results])
+            l = min(*[x[1] for x in results], 1e99)
             state = [x[0] for x in results if x[1]==l][-1]
             set_state(state, model, simulator, optimizer)
 
             # log
-            text = f'video:{curr_video}  loss:{l} params:{simulator.close},{simulator.open},{simulator.dhot}'
+            text = f'video:{curr_video} sim_loss={sim_loss.item()} nn_loss:{l} params:{simulator.close},{simulator.open},{simulator.dhot}'
             tqdm.write(text)
             logger.log(text)
+
+        if np.random.rand()>.95:
+            a,b,c = (np.random.rand(3)*10+1).astype(int)
+            simulator.close = a ; simulator.open = b ; simulator.hot = max(a,b,c)
 
         # FINAL SAVE
         if np.random.rand()>.9 or e==n_iter-1:
@@ -169,6 +175,7 @@ def next_video(args, rnd, i):
 def load_pretrained(args, device='cuda'):
     model = build_model(args.architecture).to(device)
     loss_fn = ComputeLoss(model)
+    loss_fn.gr = 0 # so that model that predict bad bounding box are not facilitated
     optimizer = torch.optim.AdamW([
             {'params': model.model[1:].parameters(), 'lr': args.lr},
             {'params': model.model[0].parameters()}
@@ -183,6 +190,9 @@ def load_pretrained(args, device='cuda'):
 def transform(svss, gt_boxes, aug=True):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
+        if aug and i>25: continue
+        if not aug and i<20: continue
+        
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
         gt[:,0] = c
@@ -222,7 +232,7 @@ def transform(svss, gt_boxes, aug=True):
 
 
 if __name__=='__main__':
-    init_seeds(291098)
+    init_seeds(0)
     args = get_args_parser().parse_args()
     args.use_cars=True
     args.crop_svs=True

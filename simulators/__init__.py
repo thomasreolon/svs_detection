@@ -1,9 +1,11 @@
 from .forensor_sim import StaticSVS
 from .grey import GreyscaleSVS
+from .rlearn import RLearnSVS
 
 supported = [
     StaticSVS,      # static
-    GreyscaleSVS    # grey
+    GreyscaleSVS,    # grey
+    RLearnSVS
 ]
 
 def get_simulator(name):

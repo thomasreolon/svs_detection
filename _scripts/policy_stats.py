@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from configs.defaults import get_args_parser
 from utils import init_seeds
 from utils.scores_svs import get_scores as get_gt_scores
-from simulators.evolutive import get_heuristics
+from simulators.rlearn import get_heuristics
 from simulators.forensor_sim import StaticSVS
 from models import build as build_model, ComputeLoss
 

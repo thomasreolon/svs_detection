@@ -64,7 +64,7 @@ def eval_architecture(args, device, nn):
         loss += float(summary.split('loss_tot=')[1].split(' ')[0])
     
     ntk, _, grad = get_nn_heuristics(model, loss_fn, tr_loader, device,epoch+1)
-    map_ = predict_map(ntk, grad, loss/2)
+    map_ = predict_map2(ntk, grad, loss/2)
 
     return {'p_map':map_, 'n_params':n_params}
 

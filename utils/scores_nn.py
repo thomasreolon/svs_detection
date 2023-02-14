@@ -8,6 +8,11 @@ def predict_map(ntk, grd, loss):
   ntk = np.nan_to_num(np.log(ntk), nan=-10)
   return 0.00218927*ntk + -0.00143292*grd + -0.00025612*loss + 0.8031
 
+def predict_map2(ntk, grd, loss):
+  ntk = np.nan_to_num(np.log(ntk-100000), nan=-10)
+  if ntk<0 or loss>300: grd*=0.8
+  return -grd
+
 def get_nn_heuristics(model, loss_fn, tr_loader, device, batch=0):
     """returns 3 scores about the network, the higher the better"""
     gc.collect(); torch.cuda.empty_cache()

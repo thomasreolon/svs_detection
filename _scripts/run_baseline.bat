@@ -1,5 +1,4 @@
 
-
 python main.py --exp_name comparison/baseline/trg  --architecture yolophi  --epochs 160 --framerate 2 --simulator static --triggering --debug
 
 python main.py --exp_name comparison/baseline/f2s123   --architecture yolophi  --epochs 50 --framerate 2 --simulator static --svs_close 1 --svs_open 2 --svs_hot 3 --pretrained _outputs/comparison/baseline/trg/model.pt  

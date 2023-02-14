@@ -1,6 +1,7 @@
 # Outputs and Dataset
 _outputs
-
+policy.pt
+**.tmp
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
