@@ -12,7 +12,7 @@ perameters change with a previously learned policy
 """
 
 class RLearnSVS(StaticSVS):
-    name = 'evolved'
+    name = 'policy'
     def __init__(self, d_close=1, d_open=3, d_hot=5, updateevery=3, verbose=True):
         # Algorithm parameters
         self.erosion_kernel = np.ones((3, 3), np.uint8)
