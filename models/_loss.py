@@ -220,13 +220,6 @@ class ComputeLoss:
                 iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                 lbox += ((1.0 - iou)*coeff).mean()  # iou loss
 
-                # # Regression L1
-                # pxy = pxy.sigmoid() * 2 - 0.5 
-                # pwh = pwh ###### * anchors[i]
-                # pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                # iou = -(pbox*1.3-tbox[i]*1.3).abs().sum(dim=1)
-                # lbox += ((1.0 - iou)*coeff).mean()  # iou loss
-
                 tmp=[torch.nan_to_num(1-iou[b==i].mean(), -1).view(1) for i in range(bs)]
                 lbox_items += torch.cat(tmp)
 

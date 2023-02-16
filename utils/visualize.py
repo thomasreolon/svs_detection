@@ -60,7 +60,7 @@ class StatsLogger():
 
         # rescale SVS
         svs_img, pred_boxes = self.clean_svs(svs_img, pred_boxes)
-        svs_img = self.draw_boxes(svs_img, pred_boxes, [1]*len(pred_boxes), drawid=False)
+        svs_img = self.draw_boxes(svs_img, pred_boxes, [9]*len(pred_boxes), drawid=False)
 
         # rescale heatmap
         heat = np.uint8((heat.sigmoid()*255)[...,None].expand(-1,-1,3))
@@ -123,7 +123,7 @@ class StatsLogger():
             x1,y1,x2,y2 = max(min(x1,img.shape[1]-2), 0),max(min(y1,img.shape[0]-2), 0),max(min(x2,img.shape[1]-1), 1),max(min(y2,img.shape[0]-1), 1)
             id = int(id) ; font = 0.5 + (y2-y1-160)/320
             color = tuple([(id * prime + (10+id)*83) % 255 for prime in [643,997,676]])
-            img = cv2.rectangle(img, (x1,y1), (x2,y2), color)
+            img = cv2.rectangle(img, (x1,y1), (x2,y2), color, 2)
             if drawid:
                 img = cv2.putText(img, f"{id}", (x1 + 8, y1 + 24), cv2.FONT_HERSHEY_SIMPLEX, font, color)
         return img

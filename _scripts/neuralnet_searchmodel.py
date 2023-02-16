@@ -19,7 +19,7 @@ from datasets.mot_svs_cache import FastDataset
 from utils import init_seeds
 from models import build_special as build_model, ComputeLoss
 from engine import train_one_epoch
-from utils.scores_nn import get_nn_heuristics, predict_map
+from utils.scores_nn import get_nn_heuristics, predict_map2
 
 
 #### NOTE: there is a memory leak... so it becomes slow after a bit
