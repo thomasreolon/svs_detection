@@ -57,7 +57,7 @@ class RLearnSVS(StaticSVS):
             self.prev_state = state
 
         # input to policy
-        full_state = np.array(state + self.prev_state + [max(0,self.count)])
+        full_state = np.array(state + self.prev_state + [min(50,max(0,self.count))])
 
         # output
         action = self.policy(full_state)
@@ -114,7 +114,7 @@ class RLearnSVS(StaticSVS):
                 ac.append((0,0,-1))
             if self.open+1<self.dhot:
                 ac.append((0,1,0))
-            if self.open>1:
+            if self.open>self.close+1:  #1: # allows 1,1,2
                 ac.append((0,-1,0))
             if self.close+1<self.dhot:
                 ac.append((1,0,0))
@@ -130,9 +130,14 @@ class RLearnSVS(StaticSVS):
 
 
 def get_heuristics(heat_map):
-    n_cc, _, stats, _ = cv2.connectedComponentsWithStats(heat_map, 5, cv2.CV_32S)
-    areas = stats[1:,-1]
-    a_st = np.nan_to_num(areas.std(), nan=0)
-    a_me = np.nan_to_num(areas.mean(), nan=0)
     n_wh = (heat_map>0).sum()
+    n_cc, _, stats, _ = cv2.connectedComponentsWithStats(heat_map, 5, cv2.CV_32S)
+    if n_cc==1:
+        a_st = 0
+        a_me = 0
+    else:
+        areas = stats[1:,-1]
+        a_st = np.nan_to_num(areas.std(), nan=0)
+        a_me = np.nan_to_num(areas.mean(), nan=0)
+    
     return [n_cc, a_st, a_me, n_wh]

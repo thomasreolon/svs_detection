@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 
 from configs.defaults import get_args_parser
 from datasets.mot_svs_cache import FastDataset
-from utils import StatsLogger, init_seeds
+from utils import StatsLogger, init_seeds, quantize
 from models import build as build_model, ComputeLoss
 from engine import train_one_epoch, test_epoch
 import utils.debugging as D
@@ -15,11 +15,6 @@ def main(args, device):
     # Setup Model & Loss
     model = build_model(args.architecture).to(device)
     loss_fn = ComputeLoss(model)
-    optimizer = torch.optim.AdamW([
-            {'params': model.model[1:].parameters(), 'lr': args.lr},
-            {'params': model.model[0].parameters()}
-        ], lr=args.lr/3, weight_decay=2e-5, betas=(0.92, 0.999))
-    scheduler = None
 
     # Initialize Logger
     logger = StatsLogger(args)
@@ -37,7 +32,20 @@ def main(args, device):
         logger.log(text+'\n') ; center_print(text, '   >', 1)
         model.load_state_dict(weights, strict=False)
 
+    # Quantize Model
+    if args.quantize!='no':
+        # device = 'cpu'
+        model = quantize(model, args.quantize).to(device)
+        loss_fn = ComputeLoss(model)
+
     if not args.skip_train:
+        # Optimizer
+        optimizer = torch.optim.AdamW([
+                {'params': model.model[1:].parameters(), 'lr': args.lr},
+                {'params': model.model[0].parameters()}
+            ], lr=args.lr/3, weight_decay=2e-5, betas=(0.92, 0.999))
+        scheduler = None
+
         # Train
         np=sum(p.numel() for p in model.parameters())
         center_print(f'Starting Training ({np}param)', ' .')
@@ -75,6 +83,7 @@ def main(args, device):
                 tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
+    
 
     ## Test
     t = logger.log_time()

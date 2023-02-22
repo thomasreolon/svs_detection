@@ -3,7 +3,7 @@ import torch
 import random
 import numpy as np
 from .visualize import StatsLogger
-
+from .quantize_model import quantize
 
 def init_seeds(n):
     old_seed = (torch.seed(), np.random.get_state())
