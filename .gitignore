@@ -2,6 +2,7 @@
 _outputs
 policy.pt
 **.tmp
+**.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

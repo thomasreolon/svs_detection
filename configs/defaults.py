@@ -13,8 +13,9 @@ def get_args_parser():
     
     # Model Settings
     parser.add_argument('--architecture', default='yolophi', type=str,             help='mlp, mlp2, yolo5, yolophi, yolo8')
-    parser.add_argument('--simulator', default='static', type=str,              help='static, simple, evolution')
+    parser.add_argument('--simulator', default='static', type=str,              help='static, simple, policy')
     parser.add_argument('--pretrained', default='<auto>', type=str,             help='path to checkpoint, auto will search in output+expname path')
+    parser.add_argument('--policy', default='policy_104.pt', type=str,             help='path to policy, used only if simulator==policy')
 
     # Configuration Setting
     parser.add_argument('--framerate', default=2, type=float)

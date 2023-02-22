@@ -51,6 +51,7 @@ def get_cache_path(args, v):
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([f'{x:.2f}' for x in v["aug_color"]["noise"]])
     selection = ','.join(sorted(v["select_video"])) if isinstance(v["select_video"], list) else v["select_video"]
     triggering = '_TRG' if v["triggering"] else ''
+    policy = f'_POL[{v["policy"]}]' if v["simulator"]=='policy' else ''
     svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' if v["simulator"]!='grey' else ''
     return  f'{args.out_path}/_ds_cache/ds' \
             f'{svs}' \
@@ -59,6 +60,7 @@ def get_cache_path(args, v):
             f'_CAR[{int(v["use_cars"])}]' \
             f'_TRN[{int(v["is_train"])}]' \
             f'_CRP[{int(v["crop_svs"])}]' \
+            f'{policy}' \
             f'{triggering}' \
             f'_SIM[{v["simulator"]}]' \
             f'_COL[{v["aug_color"]["brightness"]:.2f},{v["aug_color"]["contrast"]:.2f},' \
@@ -159,6 +161,7 @@ def get_configs(args, is_train, aug_affine):
             'use_cars':args.use_cars,
             'simulator':args.simulator,
             'crop_svs':args.crop_svs,
+            'policy': args.policy,
         })
         np.random.set_state(st0)
 

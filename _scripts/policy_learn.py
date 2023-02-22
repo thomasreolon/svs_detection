@@ -15,15 +15,16 @@ from utils import init_seeds, StatsLogger
 from simulators.rlearn import RLearnSVS
 from models import build as build_model, ComputeLoss
 
-PRETRAINED = 'C:/Users/Tom/Desktop/svs_detection/_outputs/phi_pretrain.pt'
+PRETRAINED = 'C:/Users/Tom/Desktop/svs_detection/_outputs/comparison/model/phi3_7/model.pt' #'C:/Users/Tom/Desktop/svs_detection/_outputs/phi_pretrain.pt'
 
 def main(args, device):
     # settings
     batch_size = 32
     number_forks = 4
-    n_iter = 200
+    n_iter = 2000
 
     # yolo (differentiable)
+    args.architecture = 'opt_yolo7'
     model, optimizer, loss_fn = load_pretrained(args, device)
     model.train()
     logger = StatsLogger(args)
@@ -38,85 +39,87 @@ def main(args, device):
     v = 4
     pbar = tqdm(range(n_iter))
     for e in pbar:
-        curr_video, imgs, tgs, v = next_video(args, e<1990, v)
+        try:
+            curr_video, imgs, tgs, v = next_video(args, e<1990, v)
 
-        # warmup simulator
-        simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
-        simulator.count = -10
-        [simulator(i) for i in imgs[:10]]
-        tg = tgs.clone()
-        tg[:,0] -= 10
+            # warmup simulator
+            simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
+            simulator.count = -10
+            [simulator(i) for i in imgs[:10]]
+            tg = tgs.clone()
+            tg[:,0] -= 10
 
-        # divide video in batches of (32)
-        x_gs, ys = get_svs_gt(imgs, tgs, batch_size)
+            # divide video in batches of (32)
+            x_gs, ys = get_svs_gt(imgs, tgs, batch_size)
 
-        for b, (x_, y_) in enumerate(zip(x_gs, ys)):
-            results = []
-            start = get_state(model, simulator, optimizer)
-            for fork in range(number_forks):
-                simulator.count = b*batch_size
-                if fork>0: set_state(start, model, simulator, optimizer)
-                else: simulator.count = -99999 # always static action (0,0,0) for fork=0
+            for b, (x_, y_) in enumerate(zip(x_gs, ys)):
+                results = []
+                start = get_state(model, simulator, optimizer)
+                for fork in range(number_forks):
+                    simulator.count = b*batch_size
+                    if fork>0: set_state(start, model, simulator, optimizer)
+                    else: simulator.count = -99999 # always static action (0,0,0) for fork=0
 
-                # simulate
-                xt = simulate(simulator, x_)
+                    # simulate
+                    xt = simulate(simulator, x_)
 
-                # train NN
-                for ex in range(5):
-                    oldseed = init_seeds(e*900+v*100+ex)
-                    x,y = transform(xt.copy(), y_.clone(), ex!=4)
+                    # train NN
+                    for ex in range(5):
+                        oldseed = init_seeds(e*900+v*100+ex)
+                        x,y = transform(xt.copy(), y_.clone(), ex!=4)
 
-                    x,y = x.to(device), y.to(device)
-                    _, y_p, count = model(x)
-                    loss, _ = loss_fn(y_p, y, count)
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-                    optimizer.step()
-                    optimizer.zero_grad()
+                        x,y = x.to(device), y.to(device)
+                        _, y_p, count = model(x)
+                        loss, _ = loss_fn(y_p, y, count)
+                        loss.backward()
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+                        optimizer.step()
+                        optimizer.zero_grad()
 
-                    tqdm.write(f'- {fork}: {loss.item()}')
-                    init_seeds(oldseed)
-                
-                # save fork results
-                state = get_state(model, simulator, optimizer)
-                loss = float(loss.item())
-                pred = simulator._pred
+                        tqdm.write(f'- {fork}: {loss.item()}')
+                        init_seeds(oldseed)
+                    
+                    # save fork results
+                    state = get_state(model, simulator, optimizer)
+                    loss = float(loss.item())
+                    pred = simulator._pred
 
-                results.append((state, loss, pred))
+                    results.append((state, loss, pred))
 
-            # train reward predictor
-            sim_loss = 0
-            state, loss, pred = results[0]  # action 0 results
-            for ex, (_, l, p) in enumerate(results):
-                reward = (loss-l)/(1+abs(loss))*20 # reward for changing parameters
-                sim_loss = sim_loss + (p-reward)**2
-                print('--loss', p,reward)
-            sim_loss.backward()
-            if torch.isnan(list(simulator.pred_reward.parameters())[0].grad).sum()==0:
-                torch.nn.utils.clip_grad_norm_(simulator.pred_reward.parameters(), 1)
-                sim_opt.step()
-            else:
-                print('\nSKIP, NAN ')
-            sim_opt.zero_grad()
+                # train reward predictor
+                sim_loss = 0
+                state, loss, pred = results[0]  # action 0 results
+                for ex, (_, l, p) in enumerate(results):
+                    reward = (loss-l)/(1+abs(loss))*20 # reward for changing parameters
+                    sim_loss = sim_loss + (p-reward)**2
+                    print('--loss', p,reward)
+                sim_loss.backward()
+                if torch.isnan(list(simulator.pred_reward.parameters())[0].grad).sum()==0:
+                    torch.nn.utils.clip_grad_norm_(simulator.pred_reward.parameters(), 1)
+                    sim_opt.step()
+                else:
+                    print('\nSKIP, NAN ')
+                sim_opt.zero_grad()
 
-            # new state: the one with smallest loss
-            l = min(*[x[1] for x in results], 1e99)
-            state = [x[0] for x in results if x[1]==l][-1]
-            set_state(state, model, simulator, optimizer)
+                # new state: the one with smallest loss
+                l = min(*[x[1] for x in results], 1e99)
+                state = [x[0] for x in results if x[1]==l][-1]
+                set_state(state, model, simulator, optimizer)
 
-            # log
-            text = f'video:{curr_video} sim_loss={sim_loss.item()} nn_loss:{l} params:{simulator.close},{simulator.open},{simulator.dhot}'
-            tqdm.write(text)
-            logger.log(text)
+                # log
+                text = f'video:{curr_video} sim_loss={sim_loss.item()} nn_loss:{l} params:{simulator.close},{simulator.open},{simulator.dhot}'
+                tqdm.write(text)
+                logger.log(text)
 
-        if np.random.rand()>.95:
-            a,b,c = (np.random.rand(3)*10+1).astype(int)
-            simulator.close = a ; simulator.open = b ; simulator.hot = max(a,b,c)
+            if np.random.rand()>.95:
+                a,b,c = (np.random.rand(3)*10+1).astype(int)
+                simulator.close = a ; simulator.open = b ; simulator.hot = max(a,b,c)
 
-        # FINAL SAVE
-        if np.random.rand()>.9 or e==n_iter-1:
-            torch.save(simulator.pred_reward.state_dict(), save_path)
-            torch.save(model.state_dict(), save_path+'2')
+            # FINAL SAVE
+            if np.random.rand()>.9 or e==n_iter-1:
+                torch.save(simulator.pred_reward.state_dict(), save_path)
+                torch.save(model.state_dict(), save_path+'2')
+        except: pass
 
 
 def simulate(simulator, imgs):

@@ -37,6 +37,7 @@ class MOTDataset(torch.utils.data.Dataset):
                  crop_svs=False,        # simulates in high res, will crop later
                  triggering=False,      # if False drops most of frames that do not contain annotations
                  raw = False,           # return frames without pre-proc (does not discard initial ones & empty) 
+                 policy = False,        # path to policy weights for policy sensor
 
                  cache_path=None        # if provided will try to load data from the file insted of simulating it
                  ):
@@ -44,15 +45,14 @@ class MOTDataset(torch.utils.data.Dataset):
         self.aug_post = gettransforms_post(aug_affine, self.IMG_SHAPE)
         self.aug_color = aug_color if aug_color is not None else self.NO_AUGCOL
         self.crop_svs = crop_svs
-        Simulator = get_simulator(simulator)
+
+        # simulator:  frame --> motion_map
+        foresensor = get_simulator(simulator, svs_close, svs_open, svs_hot, policy)
         
         if cache_path is not None:
             cache_path = os.path.abspath(cache_path)
 
         if cache_path is None or not os.path.exists(cache_path):
-            # simulator:  frame --> motion_map
-            foresensor = Simulator(svs_close, svs_open, svs_hot)
-
             # load videos[(img_path, boxes)]
             videos = load_data(mot_path, select_video, framerate, is_train, use_cars)
 

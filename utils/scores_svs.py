@@ -11,7 +11,6 @@ def get_scores(svs, gt):
     truth = np.zeros_like(svs).astype(bool)
     for x1,y1,x2,y2 in boxes:
         truth[y1:y2, x1:x2] = True
-
     # get scores
     scores = []
     for score in [score_precision, score_recall, score_stability, score_cc]:

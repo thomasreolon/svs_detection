@@ -13,7 +13,7 @@ perameters change with a previously learned policy
 
 class RLearnSVS(StaticSVS):
     name = 'policy'
-    def __init__(self, d_close=1, d_open=3, d_hot=5, updateevery=3, verbose=True):
+    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='policy.pt', updateevery=3, verbose=True):
         # Algorithm parameters
         self.erosion_kernel = np.ones((3, 3), np.uint8)
         self.verbose  = verbose
@@ -26,7 +26,7 @@ class RLearnSVS(StaticSVS):
             torch.nn.LeakyReLU(),
             torch.nn.Linear(5, 1),
         )
-        self._init_weight()
+        self._init_weight(policy)
         self.pred_reward.eval()
         self._i = -1
 
@@ -98,11 +98,11 @@ class RLearnSVS(StaticSVS):
         torch.set_grad_enabled(tmp)
         return pred_reward
 
-    def _init_weight(self):
+    def _init_weight(self, policy_weights):
         p = pathlib.Path(__file__).parent.resolve().__str__()
-        p = p+'/../policy.pt'
+        p = f'{p}/../{policy_weights}'
         if os.path.exists(p):
-            print('loaded policy')
+            print(f'loaded policy: {p[-20:]}')
             self.pred_reward.load_state_dict(torch.load(p))
 
     def get_actions(self):
