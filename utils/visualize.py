@@ -131,6 +131,7 @@ class StatsLogger():
     def clean_svs(self, svs_img, pred_boxes):
         """postprocess after YoloDetectionHead for visualization"""
         # normalize precictons (to be in range 0,1)
+        svs_img = svs_img[:1]
         pred_boxes = pred_boxes / torch.tensor(svs_img.shape)[[2,1,2,1]] ####### NOOOO TODO
         pred_boxes = pred_boxes.clamp(0,1)
 

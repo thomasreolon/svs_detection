@@ -10,10 +10,10 @@ from models import build as build_model, ComputeLoss
 from engine import train_one_epoch, test_epoch
 import utils.debugging as D
 
-
 def main(args, device):
     # Setup Model & Loss
-    model = build_model(args.architecture).to(device)
+    ch_in = 1 if 'cat' not in args.simulator else 2 # mhicatgrey gives 2 channels images
+    model = build_model(args.architecture, ch_in).to(device)
     loss_fn = ComputeLoss(model)
 
     # Initialize Logger

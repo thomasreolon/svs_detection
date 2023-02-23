@@ -15,7 +15,7 @@ class FastDataset(torch.utils.data.Dataset):
                  aug_affine,        # augment post svs
                  ):
         super().__init__()
-        dataset_configs = get_configs(args, is_train, aug_affine)
+        dataset_configs = get_configs(args, is_train, aug_affine, args.dataset)
         self.datasets = {k:MOTDataset(**v, cache_path=get_cache_path(args, v)) for k,v in tqdm(dataset_configs.items(),desc='loading dataset')}
 
 
@@ -68,89 +68,101 @@ def get_cache_path(args, v):
                  f'{v["aug_color"]["hue"]:.2f},{v["aug_color"]["gamma"]:.2f},{noise}]' \
              '.pkl'
 
-def get_configs(args, is_train, aug_affine):
+def get_configs(args, is_train, aug_affine, dataset):
     st0 = np.random.get_state()
     np.random.seed(seed=42)
     if is_train:
-        configs =  {
-            'mot17':{
-                # all videos from MOT17 & synthMOT without augmentations
-                'select_video':'MOT17',
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':aug_affine,
-                'triggering':False,   
-            },
-            'synth':{
-                # all videos from TOMDataset without augmentations
-                'select_video':'synth',
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':aug_affine,
-                'triggering':False,   
-            },
-            'synth-dark':{
-                # all videos from TOMDataset without augmentations
-                'select_video':'synth-7',
-                'is_train':True,  
-                'aug_color':{'brightness':0.4, 'contrast':0.3, 'saturation':0.4, 'sharpness':0.5, 'hue':0.6, 'gamma':0.2, 'noise':None}, 
-                'aug_affine':aug_affine,
-                'triggering':False,   
-            },
-            'mydataset':{
-                'select_video':'vid_',
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':aug_affine,
-                'triggering':args.triggering,   
-            },
-            'darker':{
-                'select_video':['vid_2','vid_4'],
-                'is_train':True,  
-                'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
-                'aug_affine':aug_affine,
-                'triggering':args.triggering,   
-            },
-            'noise':{
-                'select_video':['vid_4','vid_2'],
-                'is_train':True,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
-                'aug_affine':aug_affine,
-                'triggering':args.triggering,   
-            },
-        }
+        if dataset == 'synth':
+            configs =  {
+                'mot17':{
+                    # all videos from MOT17 & synthMOT without augmentations
+                    'select_video':'MOT17',
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':False,   
+                },
+                'synth':{
+                    # all videos from TOMDataset without augmentations
+                    'select_video':'synth',
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':False,   
+                },
+                'synth-dark':{
+                    # all videos from TOMDataset without augmentations
+                    'select_video':'synth-7',
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.4, 'contrast':0.3, 'saturation':0.4, 'sharpness':0.5, 'hue':0.6, 'gamma':0.2, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':False,   
+                },}
+        elif dataset == 'streets23':
+            configs = {
+                'mydataset':{
+                    'select_video':'vid_',
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':args.triggering,   
+                },
+                'darker':{
+                    'select_video':['vid_2','vid_4'],
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':args.triggering,   
+                },
+                'noise':{
+                    'select_video':['vid_4','vid_2'],
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
+                    'aug_affine':aug_affine,
+                    'triggering':args.triggering,   
+                },
+            }
+        elif dataset == 'cars':
+            raise Exception('not supported yet')
+
     else:
         # test Datasets
-        configs =  {
-            'myd':{
-                'select_video':'vid_',
-                'is_train':False,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':False,
-                'triggering':args.triggering,    
-            },
-            'myd_darknoise':{
-                'select_video':'vid_',
-                'is_train':False,  
-                'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':(.2,.7,.2,.6)}, 
-                'aug_affine':False,
-                'triggering':args.triggering,    
-            },
-            'synth':{
-                'select_video':'synth',
-                'is_train':False,  
-                'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
-                'aug_affine':False,
-                'triggering':False,    
-            },
-            'synth_darknoise':{
-                'select_video':'synth',
-                'is_train':False,  
-                'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.4, 'hue':0.5, 'gamma':0.1, 'noise':(.2,.7,.2,.6)}, 
-                'aug_affine':False,
-                'triggering':False,    
-            },
+        if dataset == 'synth':
+            configs =  {
+                'synth':{
+                    'select_video':'synth',
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':False,
+                    'triggering':False,    
+                },
+                'synth_darknoise':{
+                    'select_video':'synth',
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.4, 'hue':0.5, 'gamma':0.1, 'noise':(.2,.7,.2,.6)}, 
+                    'aug_affine':False,
+                    'triggering':False,    
+                }
             }
+        elif dataset == 'streets23':
+            configs =  {
+                'myd':{
+                    'select_video':'vid_',
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':False,
+                    'triggering':args.triggering,    
+                },
+                'myd_darknoise':{
+                    'select_video':'vid_',
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':(.2,.7,.2,.6)}, 
+                    'aug_affine':False,
+                    'triggering':args.triggering,    
+                }
+            }
+        elif dataset == 'cars':
+            raise Exception('not supported yet')
     for v in configs.values():
         v.update({
             'mot_path':args.mot_path,

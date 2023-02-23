@@ -12,7 +12,8 @@ class StaticSVS():
     name = 'static'
     def __init__(self, d_close=1, d_open=3, d_hot=5):
         # Algorithm parameters
-        self.erosion_kernel = np.ones((3, 3), np.uint8)
+        self.kernels = self.get_kernels()
+        self.er_k = 0
         self.open = d_open
         self.close = d_close
         self.dhot = d_hot
@@ -21,6 +22,17 @@ class StaticSVS():
         """initial values for the threshold (background image without any moving object)"""
         self.Threshold_H = (init_threshold+(std/2)).astype(np.int)
         self.Threshold_L = (init_threshold-(std/2)).astype(np.int)
+    
+    def get_kernels(self):
+        a = np.ones((3, 3), np.uint8)
+        b = np.zeros((3, 3), np.uint8)
+        b[:2,:2]=1 ; b[0,0] = 0
+        c = np.zeros((3, 3), np.uint8)
+        c[1,:]=1 ; c[:,1]=1
+        d = np.zeros((3, 3), np.uint8)
+        d[1,1]=1
+        return [a,b,c,d]
+
 
 
     def __call__(self, frame):
@@ -44,7 +56,7 @@ class StaticSVS():
         tmp_hot = tmpH_hot | tmpL_hot
         heat_map = np.zeros_like(frame)
         heat_map[tmp_hot] = 255
-        heat_map = cv2.erode(heat_map, self.erosion_kernel, iterations=1)
+        heat_map = cv2.erode(heat_map, self.kernels[self.er_k], iterations=1)
         heat_map = heat_map.astype(np.uint8)
 
         return heat_map[:,:,None]

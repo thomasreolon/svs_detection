@@ -88,7 +88,7 @@ class MOTDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         info, img, boxes, ids = self.data[idx]
 
-        if len(ids) != len(boxes):#NOTE:ids are not useful anyway..
+        if len(ids) != len(boxes):#NOTE:ids are not useful anyways..
             ids = (list(ids) + list(range(100,200)))[:len(boxes)]
 
         # augment flip rotate
