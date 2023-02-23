@@ -141,6 +141,7 @@ class ComputeLoss:
             'box': 1.5,
             'cls': 1,
             'obj': 3,
+            'cnt': 0.5,
             'label_smoothing': True,
             'box_area_wh': False,
             'fl_gamma':0,
@@ -189,9 +190,8 @@ class ComputeLoss:
         gt_count = torch.tensor([len(targets[targets==i]) for i in range(bs)], device=counts.device, dtype=counts.dtype)
         pr_p = counts[:,0]
         gt_p = (gt_count>0).float()
-        c_loss2 = (pr_p-gt_p)**2 # maybe not the smartest but does its job
-        pr_count = counts[:,1] + (counts[:,0].detach()>0).float()
-        c_loss1  = self.cl1(pr_count, gt_count) / (gt_count+2)
+        c_loss2 = (pr_p-gt_p)**2 # maybe not the smartest but does its job (cross entropy made NaNs)
+        c_loss1  = self.cl1(counts[:,1], gt_count) *2 / (gt_count+2)
         lcnt = c_loss1+c_loss2
         lcnt_items = lcnt   # count loss for logging
         lcnt = lcnt.mean()
@@ -259,6 +259,7 @@ class ComputeLoss:
         lbox *= self.hyp['box']
         lobj *= self.hyp['obj']
         lcls *= self.hyp['cls']
+        lcnt *= self.hyp['cnt']
         mlt = tobj.shape[0]
 
         return (lbox + lobj + lcls + lcnt) * mlt, torch.stack((lobj_items*self.hyp['obj'], lbox_items*self.hyp['box'], lcnt_items), dim=1)

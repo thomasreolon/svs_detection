@@ -186,7 +186,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
     boxes = []
     obj_id = []
     infos = []
-    ff = min(len(data), 120) ; ii = max(0, ff-80) #NOTE: max 80 frames x sequence to speed up
+    ff = min(len(data), 120) ; ii = max(0, ff-170) #NOTE: max 170 frames x sequence to speed up
     for i, (im_path, gt) in enumerate(data[ii:ff]):  
         # augment input video color
         img = Image.open(im_path)

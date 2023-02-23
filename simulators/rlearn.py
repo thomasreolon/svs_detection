@@ -82,7 +82,7 @@ class RLearnSVS(StaticSVS):
 
         if self.pred_reward.training:
             scores = np.array([ x.detach().item() for x in tensors])  
-            scores = scores * (100+max(0,min(1000,self.count))) / 100  # Exploitation through time
+            scores = scores * (20+max(0,min(1000,self.count))) / 20  # Exploitation through time
             scores = np.exp(scores)
             scores = scores/scores.sum()
             i = np.random.choice(list(range(len(actions))), p=scores)
@@ -92,14 +92,13 @@ class RLearnSVS(StaticSVS):
             i = tensors.index(max(tensors))
 
         if self.verbose and i>0:
-            if self.pred_reward.training: print('scores =', [f'{s:.2f}<-{a}' for s,a in zip(scores, actions)][:3])
-            print(f'switching: {state[:3].tolist()} --> {(state[:3]+actions[i]).tolist()}')
+            print(f'switching: {state[:4].tolist()} --> {(state[:4]+actions[i]).tolist()}')
 
         return actions[i]
 
     def score(self, state, action):
         state = state.copy()
-        state[:3] += action
+        state[:4] += action
         state = np.nan_to_num(state, False, 0,1e5,-1e5)
         tmp = torch.is_grad_enabled()
         torch.set_grad_enabled(self.pred_reward.training)
@@ -134,9 +133,9 @@ class RLearnSVS(StaticSVS):
             if self.er_k+1<len(self.kernels):
                 ac.append((0,0,0,1))
             for a in [ # checkpoints
-                (1-self.close, 3-self.open, 4-self.dhot, 0),
-                (3-self.close, 2-self.open, 4-self.dhot, 2),
-                (3-self.close, 4-self.open, 10-self.dhot, 3),]:
+                (1-self.close, 3-self.open, 4-self.dhot, 0-self.er_k),
+                (3-self.close, 2-self.open, 4-self.dhot, 2-self.er_k),
+                (3-self.close, 4-self.open, 10-self.dhot, 3-self.er_k),]:
                 if a not in ac: ac.append(a)
         return ac
 

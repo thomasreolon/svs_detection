@@ -16,7 +16,7 @@ class SimulationFastDataset(FastDataset):
         super(FastDataset, self).__init__()
 
         # load cached datsets
-        dataset_configs = get_configs(args, True, False)
+        dataset_configs = get_configs(args, True, False, args.dataset)
         for v in dataset_configs.values():
             v['simulator'] = 'grey'
         self.datasets = {k:MOTDataset(**v, raw=True, cache_path=get_cache_path(args, v)) for k,v in tqdm(dataset_configs.items(),desc='loading dataset pt.1')}

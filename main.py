@@ -71,6 +71,8 @@ def main(args, device):
             if epoch+1==args.epochs//2:
                 logger.log_time()
                 logger.log('>> changing loss \n')
+                if args.triggering:
+                    loss_fn.hyp['cnt']=3
                 loss_fn.gr = .5 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.5)
             if epoch+1==args.epochs*4//5:
                 logger.log('>> changing optimizer \n')
@@ -122,6 +124,7 @@ if __name__=='__main__':
     args = get_args_parser().parse_args()
     args.use_cars=True
     args.crop_svs=True
+    args.out_path = 'E:/dataset/_outputs'  # TODO: remove at the end
     args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)

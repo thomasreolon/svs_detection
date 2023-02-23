@@ -51,7 +51,7 @@ def get_cache_path(args, v):
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([f'{x:.2f}' for x in v["aug_color"]["noise"]])
     selection = ','.join(sorted(v["select_video"])) if isinstance(v["select_video"], list) else v["select_video"]
     triggering = '_TRG' if v["triggering"] else ''
-    policy = f'_POL[{v["policy"]}]' if v["simulator"]=='policy' else ''
+    policy = f'_POL[{v["policy"].split(".")[0]}]' if v["simulator"]=='policy' else ''
     svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' if v["simulator"]!='grey' else ''
     return  f'{args.out_path}/_ds_cache/ds' \
             f'{svs}' \
@@ -71,11 +71,12 @@ def get_cache_path(args, v):
 def get_configs(args, is_train, aug_affine, dataset):
     st0 = np.random.get_state()
     np.random.seed(seed=42)
+    configs = {}
     if is_train:
-        if dataset == 'synth':
-            configs =  {
+        if dataset=='all' or dataset=='people' or dataset == 'synth':
+            configs.update({
                 'mot17':{
-                    # all videos from MOT17 & synthMOT without augmentations
+                    # all videos from MOT17 without augmentations
                     'select_video':'MOT17',
                     'is_train':True,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
@@ -83,7 +84,7 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':False,   
                 },
                 'synth':{
-                    # all videos from TOMDataset without augmentations
+                    # all videos from synthMOT without augmentations
                     'select_video':'synth',
                     'is_train':True,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
@@ -91,44 +92,44 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':False,   
                 },
                 'synth-dark':{
-                    # all videos from TOMDataset without augmentations
+                    # some videos from synthMOT with darkness
                     'select_video':'synth-7',
                     'is_train':True,  
-                    'aug_color':{'brightness':0.4, 'contrast':0.3, 'saturation':0.4, 'sharpness':0.5, 'hue':0.6, 'gamma':0.2, 'noise':None}, 
+                    'aug_color':{'brightness':0.3, 'contrast':0.3, 'saturation':0.4, 'sharpness':0.5, 'hue':0.6, 'gamma':0.2, 'noise':None}, 
                     'aug_affine':aug_affine,
                     'triggering':False,   
-                },}
-        elif dataset == 'streets23':
-            configs = {
-                'mydataset':{
+                },})
+        if dataset=='all' or dataset=='people' or dataset == 'streets23':
+            configs.update({
+                'streets23':{
                     'select_video':'vid_',
                     'is_train':True,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                     'aug_affine':aug_affine,
                     'triggering':args.triggering,   
                 },
-                'darker':{
+                'streets23-dark':{
                     'select_video':['vid_2','vid_4'],
                     'is_train':True,  
-                    'aug_color':{'brightness':0.1, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                    'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
                     'aug_affine':aug_affine,
                     'triggering':args.triggering,   
                 },
-                'noise':{
+                'streets23-noise':{
                     'select_video':['vid_4','vid_2'],
                     'is_train':True,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':(.2,.7,.2,.7)}, 
                     'aug_affine':aug_affine,
                     'triggering':args.triggering,   
                 },
-            }
-        elif dataset == 'cars':
+            })
+        if dataset=='all' or dataset == 'cars':
             raise Exception('not supported yet')
 
     else:
         # test Datasets
-        if dataset == 'synth':
-            configs =  {
+        if dataset=='all' or dataset=='people' or dataset == 'synth':
+            configs.update({
                 'synth':{
                     'select_video':'synth',
                     'is_train':False,  
@@ -136,33 +137,35 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'aug_affine':False,
                     'triggering':False,    
                 },
-                'synth_darknoise':{
+                'synth-darknoise':{
                     'select_video':'synth',
                     'is_train':False,  
                     'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.4, 'hue':0.5, 'gamma':0.1, 'noise':(.2,.7,.2,.6)}, 
                     'aug_affine':False,
                     'triggering':False,    
                 }
-            }
-        elif dataset == 'streets23':
-            configs =  {
-                'myd':{
+            })
+        if dataset=='all' or dataset=='people' or dataset == 'streets23':
+            configs.update({
+                'streets23':{
                     'select_video':'vid_',
                     'is_train':False,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                     'aug_affine':False,
                     'triggering':args.triggering,    
                 },
-                'myd_darknoise':{
+                'streets23-darknoise':{
                     'select_video':'vid_',
                     'is_train':False,  
                     'aug_color':{'brightness':0.2, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':(.2,.7,.2,.6)}, 
                     'aug_affine':False,
                     'triggering':args.triggering,    
                 }
-            }
-        elif dataset == 'cars':
+            })
+        if dataset=='all' or dataset == 'cars':
             raise Exception('not supported yet')
+
+    # General Settings
     for v in configs.values():
         v.update({
             'mot_path':args.mot_path,
