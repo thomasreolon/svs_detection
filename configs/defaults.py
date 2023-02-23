@@ -28,7 +28,7 @@ def get_args_parser():
     # Training Setting
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=2e-3, type=float)
-    parser.add_argument('--epochs', default=160, type=int)
+    parser.add_argument('--epochs', default=100, type=int)
 
     # Eval Settings
     parser.add_argument('--out_path', default='./_outputs', type=str)
