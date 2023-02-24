@@ -24,14 +24,15 @@ class StaticSVS():
         self.Threshold_L = (init_threshold-(std/2)).astype(np.int)
     
     def get_kernels(self):
-        a = np.ones((3, 3), np.uint8)
-        b = np.zeros((3, 3), np.uint8)
-        b[:2,:2]=1 ; b[0,0] = 0
-        c = np.zeros((3, 3), np.uint8)
-        c[1,:]=1 ; c[:,1]=1
-        d = np.zeros((3, 3), np.uint8)
-        d[1,1]=1
-        return [a,b,c,d]
+        a = np.ones((3, 3), np.uint8)   # full
+        b = np.zeros((3, 3), np.uint8)  # cross
+        b[1,:]=1 ; b[:,1]=1
+        c = np.zeros((3, 3), np.uint8)  # corner
+        c[:2,:2]=1 ; c[0,0] = 0
+        d = np.zeros((3, 3), np.uint8) ; d[1,:2]=1  # left
+        e = np.zeros((3, 3), np.uint8) ; e[:2,1]=1  # top
+        f = np.zeros((3, 3), np.uint8) ; f[1,1]=1  # none
+        return [a,b,c,d,e,f]
 
 
 

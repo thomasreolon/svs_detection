@@ -13,7 +13,7 @@ from models import build as build_model, ComputeLoss
 def main(args, device):
     # settings
     batch_size = 32
-    number_forks = 4
+    number_forks = 6
     n_iter = args.n_iter
     logger = StatsLogger(args)
 

@@ -132,10 +132,15 @@ class RLearnSVS(StaticSVS):
                 ac.append((0,0,0,-1))
             if self.er_k+1<len(self.kernels):
                 ac.append((0,0,0,1))
-            for a in [ # checkpoints
-                (1-self.close, 3-self.open, 4-self.dhot, 0-self.er_k),
-                (3-self.close, 2-self.open, 4-self.dhot, 2-self.er_k),
-                (3-self.close, 4-self.open, 10-self.dhot, 3-self.er_k),]:
+            for a in [ # checkpoints: allows the model to jump between configurations (faster tuning + easier exploration)
+                (       0,          0,          0,      5-self.er_k), # high kernel
+                (       0,          0,          0,      2-self.er_k), # mid kernel
+                (       0,          0,          0,      0-self.er_k), # low kernel
+                (1-self.close, 3-self.open, 5-self.dhot, 0),          # baseline
+                (1-self.close, 19-self.open, 20-self.dhot, 0),        # purest
+                (3-self.close, 2-self.open, 4-self.dhot, 0),          # experimental
+                (2-self.close, 4-self.open, 10-self.dhot, 0),         # medium
+                (1-self.close, 2-self.open, 3-self.dhot, 0)]:         # noisiest
                 if a not in ac: ac.append(a)
         return ac
 
