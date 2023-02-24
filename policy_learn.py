@@ -22,7 +22,7 @@ def main(args, device):
     model.train()
 
     # simulator (non differentiable)
-    save_path = f"./{args.policy if len(args.policy) else 'policy.pt'}"
+    save_path = f"{args.out_path}/{args.policy if len(args.policy) else 'policy.pt'}"
     simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, args.policy, batch_size)
     warmup_agent(simulator.pred_reward)
     sim_opt = torch.optim.AdamW(simulator.pred_reward.parameters(), lr=2e-4)
@@ -122,8 +122,8 @@ def main(args, device):
             # FINAL SAVE
             if np.random.rand()>.9 or e==n_iter-1:
                 torch.save(simulator.pred_reward.state_dict(), save_path)
-        except Exception as e: raise e
-        # except: pass
+        # except Exception as e: raise e
+        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
 
 
 def simulate(simulator, imgs):
@@ -192,8 +192,9 @@ def load_pretrained(args, device='cuda'):
         ], lr=args.lr/3, weight_decay=2e-2, betas=(0.92, 0.999))
 
     # Load Pretrained
-    if not os.path.exists(args.pretrained): raise Exception(f'--pretrained="{args.pretrained}" should be the baseline model')
-    w = torch.load(args.pretrained, map_location='cpu')
+    path = f'{args.out_path}/{args.pretrained}'
+    if not os.path.exists(path): raise Exception(f'--pretrained="{path}" should be the baseline model')
+    w = torch.load(path, map_location='cpu')
     model.load_state_dict(w, strict=False)
     return model, optimizer, loss_fn
 

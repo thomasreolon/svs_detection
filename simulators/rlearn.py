@@ -107,8 +107,8 @@ class RLearnSVS(StaticSVS):
         return pred_reward
 
     def _init_weight(self, policy_weights):
-        p = pathlib.Path(__file__).parent.resolve().__str__()
-        p = f'{p}/../{policy_weights}'
+        # policy_weights: absolute path or relative path wrt. home
+        p = policy_weights if os.path.exists(policy_weights) else f'{pathlib.Path(__file__).parent.resolve().__str__()}/../{policy_weights}'
         if os.path.exists(p):
             print(f'loaded policy: {p[-20:]}')
             self.pred_reward.load_state_dict(torch.load(p))

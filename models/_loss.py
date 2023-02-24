@@ -141,7 +141,7 @@ class ComputeLoss:
             'box': 1.5,
             'cls': 1,
             'obj': 3,
-            'cnt': 0.5,
+            'cnt': 1,
             'label_smoothing': True,
             'box_area_wh': False,
             'fl_gamma':0,

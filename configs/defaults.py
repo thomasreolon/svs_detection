@@ -1,13 +1,11 @@
 import argparse
-import numpy as np
-import torch
 
 def get_args_parser():
     parser = argparse.ArgumentParser('SVS configs', add_help=False)
 
     # Dataset Settings
     parser.add_argument('--mot_path', default='E:/dataset/MOTs', type=str)
-    parser.add_argument('--dataset', default='synth', type=str,                 help='synth, streets23, (cars)')
+    parser.add_argument('--dataset', default='people', type=str,                help='synth, streets23, (cars)')
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
     # parser.add_argument('--use_cars', action='store_true',                      help='use bounding boxes of cars too')
     # parser.add_argument('--crop_svs', action='store_true',                      help='computes svs in high res, then crops it') # always true better
@@ -27,8 +25,8 @@ def get_args_parser():
 
     # Training Setting
     parser.add_argument('--batch_size', default=128, type=int)
-    parser.add_argument('--lr', default=2e-3, type=float)
-    parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--lr', default=3e-3, type=float)
+    parser.add_argument('--epochs', default=120, type=int)
 
     # Eval Settings
     parser.add_argument('--out_path', default='./_outputs', type=str)

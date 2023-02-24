@@ -81,7 +81,7 @@ def main(args, device):
             if epoch+1==args.epochs*9//10:
                 logger.log('>> changing dataset \n')
                 if args.triggering: dataset.drop(['mot17', 'synth'])            # change dataset dropping MOT17/Synth videos
-                else: dataset.drop(['mydataset', 'darker', 'noise', 'mot17'])   # change dataset dropping mydataste/mot
+                else: dataset.drop(['streets23', 'mot17'])   # change dataset dropping mydataste/mot
                 tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
@@ -93,7 +93,8 @@ def main(args, device):
     for is_train in [True, False]:
         # Load train/test dataset
         dataset = FastDataset(args, is_train, False)
-        if args.triggering: dataset.drop(['synth']) # change dataset dropping MOT17/Synth videos
+        if args.triggering: dataset.drop(['mot17', 'synth'])    # change dataset dropping MOT17/Synth videos
+        else: dataset.drop(['streets23', 'mot17'])              # change dataset dropping mydataste/mot
 
         # Inference
         test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)     

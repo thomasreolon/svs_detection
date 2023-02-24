@@ -51,7 +51,8 @@ def get_cache_path(args, v):
     noise = 'None' if v["aug_color"]["noise"] is None else ",".join([f'{x:.2f}' for x in v["aug_color"]["noise"]])
     selection = ','.join(sorted(v["select_video"])) if isinstance(v["select_video"], list) else v["select_video"]
     triggering = '_TRG' if v["triggering"] else ''
-    policy = f'_POL[{v["policy"].split(".")[0]}]' if v["simulator"]=='policy' else ''
+    tmp = v["policy"].replace("\\","/").split("/")[-1] #fname
+    policy = f'_POL[{tmp.split(".")[0]}]' if v["simulator"]=='policy' else ''
     svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' if v["simulator"]!='grey' else ''
     return  f'{args.out_path}/_ds_cache/ds' \
             f'{svs}' \

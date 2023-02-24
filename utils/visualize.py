@@ -131,12 +131,12 @@ class StatsLogger():
     def clean_svs(self, svs_img, pred_boxes):
         """postprocess after YoloDetectionHead for visualization"""
         # normalize precictons (to be in range 0,1)
-        svs_img = svs_img[:1]
         pred_boxes = pred_boxes / torch.tensor(svs_img.shape)[[2,1,2,1]] ####### NOOOO TODO
         pred_boxes = pred_boxes.clamp(0,1)
 
         # upscale image for better visualization
-        svs_img = ((svs_img*.9+.1).permute(1,2,0)*255).cpu().numpy().astype(np.uint8)
+        svs_img = ((svs_img*.9+.1).permute(1,2,0)*255).cpu().numpy()
+        svs_img = np.sum(svs_img // svs_img.shape[2], axis=2).astype(np.uint8)
         hwc = *self.VIS_SIZE, 3
         svs_img = cv2.resize(svs_img, (hwc[1], hwc[0]))[:,:,None]
         svs_img = np.uint8(np.broadcast_to(svs_img, hwc))[:].copy()
