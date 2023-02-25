@@ -7,9 +7,8 @@ def get_args_parser():
     parser.add_argument('--mot_path', default='E:/dataset/MOTs', type=str)
     parser.add_argument('--dataset', default='people', type=str,                help='synth, streets23, (cars)')
     parser.add_argument('--dont_cache', action='store_true',                    help='avoid storing simulated datasets in pickle files (recommended to cache)')
-    # parser.add_argument('--use_cars', action='store_true',                      help='use bounding boxes of cars too')
-    # parser.add_argument('--crop_svs', action='store_true',                      help='computes svs in high res, then crops it') # always true better
-    
+    # always true better # parser.add_argument('--crop_svs', action='store_true',                      help='computes svs in high res, then crops it') # always true better
+
     # Model Settings
     parser.add_argument('--architecture', default='yolophi', type=str,          help='mlp, mlp2, yolo5, yolophi, yolo8')
     parser.add_argument('--simulator', default='static', type=str,              help='static, simple, policy')
@@ -29,7 +28,7 @@ def get_args_parser():
     parser.add_argument('--epochs', default=120, type=int)
 
     # Eval Settings
-    parser.add_argument('--out_path', default='./_outputs', type=str)
+    parser.add_argument('--out_path', default='E:/dataset/_outputs', type=str)
     parser.add_argument('--exp_name', default='', type=str)
     parser.add_argument('--detect_thresh', default=0.5, type=float)
     parser.add_argument('--nms_iou', default=0.3, type=float)                   # use higher for streets23

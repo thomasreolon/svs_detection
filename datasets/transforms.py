@@ -156,6 +156,7 @@ class MotRandomShift():
         if w == imgs[0].size[0]:
             r = r*.2+.8     # 80/90 % of the image
         else:
+            if self.test: r = 0.7
             r = 1+r*2       # 1/3-100 % of the image  (args.use_crop)
         
         # deterministic or random
@@ -251,17 +252,23 @@ def random_shift(image, target, region, sizes):
     target = target.copy()
     i, j, h, w = region
 
-    boxes = target["boxes"]
-    cropped_boxes = boxes - torch.as_tensor([j, i, j, i])
+    # update boxes
+    cropped_boxes = target["boxes"] - torch.as_tensor([j, i, j, i])
     cropped_boxes *= torch.as_tensor([ow / w, oh / h, ow / w, oh / h])
-    target["boxes"] = cropped_boxes.reshape(-1, 4)
-
-    cropped_boxes = target['boxes'].reshape(-1, 2, 2)
-    max_size = torch.as_tensor([w, h], dtype=torch.float32)
+    cropped_boxes = cropped_boxes.reshape(-1, 2, 2)
+    max_size = torch.as_tensor([ow-1, oh-1], dtype=torch.float32)
     cropped_boxes = torch.min(cropped_boxes.reshape(-1, 2, 2), max_size)
     cropped_boxes = cropped_boxes.clamp(min=0)
-    keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+    target["boxes"] = cropped_boxes.view(-1,4)
 
+    # select by in screen
+    keep1 = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+
+    # select by cut
+    hwratio = torch.tensor(list(map(lambda box:  (box[3]-box[1])/(box[2]-box[0]+1e-4), cropped_boxes.view(-1, 4))))
+    keep2 = hwratio < 8
+
+    keep = keep1 & keep2
     target['boxes'] = target['boxes'][keep]
     target['obj_ids'] = target['obj_ids'][keep]
 

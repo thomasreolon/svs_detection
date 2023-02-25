@@ -11,11 +11,13 @@ Dynamic Simulator
 perameters change with a previously learned policy
 """
 
-def get_policy_type(type='neural_net'):
+def get_policy_type(type='none'):
     # maybe will support probabilistic models in the future
+    if type == 'none':
+        return lambda x: torch.tensor([0])
     if type == 'neural_net':
         return torch.nn.Sequential(
-            torch.nn.Linear(17, 4),
+            torch.nn.Linear(20, 4),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(4, 1),
         )
@@ -23,7 +25,7 @@ def get_policy_type(type='neural_net'):
 
 class RLearnSVS(StaticSVS):
     name = 'policy'
-    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='policy.pt', updateevery=3, verbose=True):
+    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='policy.pt', updateevery=3, verbose=True, train=False):
         # Algorithm parameters
         self.kernels = self.get_kernels()
         self.verbose  = verbose
@@ -32,9 +34,9 @@ class RLearnSVS(StaticSVS):
         self.close = d_close
         self.dhot  = d_hot
         self.updateevery = updateevery
+        self.train = train
         self.pred_reward = get_policy_type()
-        self._init_weight(policy)
-        self.pred_reward.eval()
+        self._load_policy(policy)
         self._i = -1
 
     def init_video(self, init_threshold, std):
@@ -76,40 +78,37 @@ class RLearnSVS(StaticSVS):
         self.er_k  += action[3]
 
     def policy(self, state):
+        # get options
         actions = self.get_actions()
-        tensors = [self.score(state,a) for a in actions]
-
-        if self.pred_reward.training:
+        state_actions = [np.nan_to_num(np.concatenate((a,state)), False, 0,1e2,-1e2) for a in actions]
+        
+        if self.train:
+            # pick random action
             i = 1+int(np.random.rand()*(len(actions)-1))
             is_last = int(len(actions)==(i+1))
             i = (i+1+is_last)%len(actions) if i==self._i else i%len(actions)
-            self._pred = tensors[i] ; self._i = i
+            self._sa = state_actions[i] ; self._i = i
         else:
+            # pick best action
+            tensors = [self.score(sa) for sa in state_actions]
             i = tensors.index(max(tensors))
 
         if self.verbose and i>0:
             print(f'switching: {state[:4].tolist()} --> {(state[:4]+actions[i]).tolist()}')
-        else:
-            print(f'keep: {state[:4].tolist()} {self.count}  {actions}')
 
         return actions[i]
 
-    def score(self, state, action):
-        state = state.copy()
-        state[:4] += action
-        state = np.nan_to_num(state, False, 0,1e5,-1e5)
-        tmp = torch.is_grad_enabled()
-        torch.set_grad_enabled(self.pred_reward.training)
-        pred_reward =  self.pred_reward(torch.tensor(state,dtype=torch.float)[None])
-        torch.set_grad_enabled(tmp)
+    def score(self, state_action):
+        with torch.no_grad():
+            pred_reward =  self.pred_reward(torch.tensor(state_action,dtype=torch.float)[None])
         return pred_reward
 
-    def _init_weight(self, policy_weights):
+    def _load_policy(self, policy_weights):
         # policy_weights: absolute path or relative path wrt. home
         p = policy_weights if os.path.exists(policy_weights) else f'{pathlib.Path(__file__).parent.resolve().__str__()}/../{policy_weights}'
-        if os.path.exists(p):
+        if os.path.isfile(p):
+            self.pred_reward = torch.load(p)
             print(f'loaded policy: {p[-20:]}')
-            self.pred_reward.load_state_dict(torch.load(p))
 
     def get_actions(self):
         ac = [(0,0,0,0)]

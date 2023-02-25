@@ -74,7 +74,18 @@ def get_configs(args, is_train, aug_affine, dataset):
     np.random.seed(seed=42)
     configs = {}
     if is_train:
-        if dataset=='all' or dataset=='people' or dataset == 'synth':
+        if dataset=='prova':
+            configs.update({
+                'prova':{
+                    # all videos from MOT17 without augmentations
+                    'select_video':'synth-513',
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':False,   
+                }})
+
+        if dataset=='all' or dataset=='people' or dataset == 'MOT':
             configs.update({
                 'mot17':{
                     # all videos from MOT17 without augmentations
@@ -124,15 +135,22 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':args.triggering,   
                 },
             })
-        if dataset=='all' or dataset == 'cars':
-            raise Exception('not supported yet')
+        # if dataset=='all' or dataset == 'cars':
+        #     raise Exception('not supported yet')
 
     else:
         # test Datasets
-        if dataset=='all' or dataset=='people' or dataset == 'synth':
+        if dataset=='all' or dataset=='people' or dataset == 'MOT':
             configs.update({
+                'mot17':{
+                    'select_video':['MOT17'],
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':False,
+                    'triggering':False,    
+                },
                 'synth':{
-                    'select_video':'synth',
+                    'select_video':['synth'],
                     'is_train':False,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                     'aug_affine':False,
@@ -163,8 +181,8 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':args.triggering,    
                 }
             })
-        if dataset=='all' or dataset == 'cars':
-            raise Exception('not supported yet')
+        # if dataset=='all' or dataset == 'cars':
+        #     raise Exception('not supported yet')
 
     # General Settings
     for v in configs.values():
@@ -174,7 +192,7 @@ def get_configs(args, is_train, aug_affine, dataset):
             'svs_open':args.svs_open,  
             'svs_hot':args.svs_hot,   
             'framerate':args.framerate, 
-            'use_cars':args.use_cars,
+            'use_cars':True,
             'simulator':args.simulator,
             'crop_svs':args.crop_svs,
             'policy': args.policy,

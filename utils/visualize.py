@@ -187,6 +187,7 @@ class StatsLogger():
         update_map(pred, boxes, map_stats)
 
     def log_stats(self):
+        acc,pr,rc,em,ap50,map = [0]*6
         self.log('_____________STATS____________\n')
         cum = []
         for vid, (cm, c_err, map_stats) in self.stats.items():
@@ -208,15 +209,20 @@ class StatsLogger():
             # Log
             text = f'[{vid}] '+ trig + count + det
             self.log(text)
-            cum.append([acc,pr,rc,em,ap50,map])
+            cum.append((vid,[acc,pr,rc,em,ap50,map]))
             set_ = 'Test' if 'test' in vid else 'Train'
-        acc,pr,rc,em,ap50,map = np.array(cum).mean(axis=0).tolist()
-        text = f'>> Averaged Stats For {set_}set\n'\
-               f'TR[accuracy={acc:.3f}  precision={pr:.3f}  recall={rc:.3f}]\n' \
-               f'CN[meanarr={em:.3f}]\n' \
-               f'DE[map={map:.3f}  ap50={ap50:.3f}]\n'
-        self.log(text)
-        self.stats = defaultdict(lambda: [np.zeros((2,2)), [], []])
+
+        for selvid in ['vid_', 'MOT17', 'synth', 'cars']:
+            tmp = [stat for v,stat in cum if selvid in v]
+            if len(tmp)==0:continue
+            acc,pr,rc,em,ap50,map = np.array(tmp).mean(axis=0).tolist()
+            text = f'>> Averaged Stats For {set_}set [{selvid}]\n'\
+                f'TR[accuracy={acc:.3f}  precision={pr:.3f}  recall={rc:.3f}]\n' \
+                f'CN[meanarr={em:.3f}]\n' \
+                f'DE[map={map:.3f}  ap50={ap50:.3f}]\n'
+            self.log(text)
+            self.stats = defaultdict(lambda: [np.zeros((2,2)), [], []])
+
         return {'T_accuracy':acc, 'T_precision':pr, 'T_recall':rc, 'C_meanerror':em, 'D_ap50':ap50, 'D_MaP':map}
 
 def safe_box_cxcywh_to_xyxy(x, m_ = 1e-2):

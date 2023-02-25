@@ -78,14 +78,14 @@ def main(args, device):
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
-            if epoch+1==args.epochs*9//10:
+            if epoch+1==args.epochs*9//10 and args.dataset in {'streets23', 'MOT'}:
                 logger.log('>> changing dataset \n')
-                if args.triggering: dataset.drop(['mot17', 'synth'])            # change dataset dropping MOT17/Synth videos
-                else: dataset.drop(['streets23', 'mot17'])   # change dataset dropping mydataste/mot
+                if args.dataset=='streets23': dataset.drop(['mot17', 'synth'])            # change dataset dropping MOT17/Synth videos
+                if args.dataset=='MOT': dataset.drop(['streets23'])                       # change dataset dropping mydataste/mot
                 tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
-    
+
 
     ## Test
     t = logger.log_time()
@@ -93,8 +93,6 @@ def main(args, device):
     for is_train in [True, False]:
         # Load train/test dataset
         dataset = FastDataset(args, is_train, False)
-        if args.triggering: dataset.drop(['mot17', 'synth'])    # change dataset dropping MOT17/Synth videos
-        else: dataset.drop(['streets23', 'mot17'])              # change dataset dropping mydataste/mot
 
         # Inference
         test_epoch(args, dataset, model, loss_fn, is_train, logger, device, args.debug)     
@@ -123,9 +121,7 @@ def center_print(text, pattern=' ', color=0):
 
 if __name__=='__main__':
     args = get_args_parser().parse_args()
-    args.use_cars=True
     args.crop_svs=True
-    args.out_path = 'E:/dataset/_outputs'  # TODO: remove at the end
     args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)

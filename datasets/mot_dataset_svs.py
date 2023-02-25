@@ -153,12 +153,13 @@ def load_data(mot_path, select_video, framerate, is_train, use_cars=False):
                 if 'synth' in v_name:
                     line = [float(x) for x in line.split(',')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <confidence> <class> <visibility>  <X><Y><Z>
-                    if line[7] != 1 and not use_cars : continue
+                    if line[7] != 1 : continue
                     if line[8] < .44: continue
                 elif 'MOT17' in v_name:
                     line = [float(x) for x in line.split(',')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <? iscrowd> <class> <visibility>
                     if line[7] != 1: continue 
+                    if line[8] < .44: continue
                 elif 'vid' in v_name:
                     line = [float(x) for x in line.split(' ')]
                     # <frame> <track> <leftmost> <topmost> <width> <height> <-1> <-1> <iscar>
@@ -186,7 +187,7 @@ def simulate_svs(foresensor, data, aug_color, img_shape, is_train, crop_svs):
     boxes = []
     obj_id = []
     infos = []
-    ff = min(len(data), 120) ; ii = max(0, ff-170) #NOTE: max 170 frames x sequence to speed up
+    ff = min(len(data), 120) ; ii = max(0, ff-178) #NOTE: max 42*4+10 frames x sequence to speed up
     for i, (im_path, gt) in enumerate(data[ii:ff]):  
         # augment input video color
         img = Image.open(im_path)

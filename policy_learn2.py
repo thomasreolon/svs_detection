@@ -5,15 +5,17 @@ import numpy as np
 from copy import deepcopy
 from time import time
 
+import pandas as pd
+
 from datasets.simulation_ds import SimulationFastDataset
 from configs.defaults import get_args_parser
 from utils import init_seeds, StatsLogger
-from simulators.rlearn import RLearnSVS
+from simulators.rlearn2 import RLearnSVS
 from models import build as build_model, ComputeLoss
 
 def main(args, device):
     # settings
-    batch_size = 32 # 32 train + 10 test
+    batch_size = 42 # 32 train + 10 test
     number_forks = 4
     n_iter = args.n_iter
     logger = StatsLogger(args)
@@ -23,25 +25,24 @@ def main(args, device):
     model.train()
 
     # simulator (non differentiable)
-    save_path = f"{args.out_path}/{args.policy if len(args.policy) else 'policy.pt'}"
-    simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, args.policy, batch_size)
-    warmup_agent(simulator.pred_reward)
-    sim_opt = torch.optim.Adam(simulator.pred_reward.parameters(), lr=2e-2)
+    save_path = f"{args.out_path}/{args.architecture}_stats.csv"
+    simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, '', batch_size, True, True)
+
+    # stats collector
+    data = {'state_action':[], 'reward':[], 'video':[]}
 
     v = 4 ; t0 = time()
     pbar = tqdm(range(n_iter))
     for e in pbar:
         try:
-            curr_video, imgs, tgs, v = next_video(args, e<n_iter-10, v)
+            curr_video, imgs, tgs, v = next_video(args, v, batch_size)
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
-            simulator.count = -10
+            simulator.count = -10 # when count is negative params are not updated (each processed frame increases count by 1)
             [simulator(i) for i in imgs[:10]]
-            tg = tgs.clone()
-            tg[:,0] -= 10
 
-            # divide video in batches of (32)
+            # divide video in batches of (32) ; skip first 10 frames
             x_gs, ys = get_svs_gt(imgs, tgs, batch_size)
 
             for b, (x_, y_) in enumerate(zip(x_gs, ys)):
@@ -51,15 +52,16 @@ def main(args, device):
                     if fork==0: simulator.count = -99999    # negative count does not change params: always static action (0,0,0) for fork=0
                     if fork>0: 
                         set_state(start, model, simulator, optimizer)
-                        simulator.count = max(0,b*batch_size) 
-                    
+                        simulator.count = b*batch_size
+
                     # simulate
                     xt = simulate(simulator, x_)
 
                     # overfit NN
-                    for ex in range(5):
+                    n_ep = 2 #+ (e==0 and b==0)*10
+                    for ex in range(n_ep):
                         oldseed = init_seeds(e*900+v*100+ex)
-                        x,y = transform(xt.copy(), y_.clone(), ex!=4)
+                        x,y = transform(xt.copy(), y_.clone(), ex!=n_ep-1, batch_size-10)
 
                         # import cv2 # show gt
                         # for j in range(len(x)):
@@ -75,8 +77,8 @@ def main(args, device):
                         #     cv2.waitKey()
 
                         x,y = x.to(device), y.to(device)
-                        _, y_p, count = model(x)
-                        loss, _ = loss_fn(y_p, y, count)
+                        _, y_p, y2_p = model(x)
+                        loss, _ = loss_fn(y_p, y, y2_p)
                         loss.backward()
                         torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
                         optimizer.step()
@@ -88,54 +90,43 @@ def main(args, device):
                     # save fork results
                     state = get_state(model, simulator, optimizer)
                     loss = float(loss.item())
-                    pred = simulator._pred
+                    stateaction = simulator._sa
 
-                    results.append((state, loss, pred))
+                    results.append((state, loss, stateaction))
                     gc.collect() ; torch.cuda.empty_cache()
 
                 # train reward predictor
-                sim_loss = 0 ; log_loss = 0
-                state, loss, pred = results[0]  # action 0 results
-                for ex, (_, l, p) in enumerate(results):
-                    reward = (loss-l)/(1+abs(loss))*20 # reward for changing parameters
-                    pitem = p.detach().item()
-                    loss_ex = (p-reward).abs()
-                    loss_ex = loss_ex *   (1 + 4*(pitem*reward<0)) # penalize more wrong classifications
-                    sim_loss = sim_loss + loss_ex
-                    log_loss = log_loss + loss_ex.item()
-                    print('--loss',log_loss, '  :::    pred,rew', p.item(),reward)
-                sim_loss.backward()
-                logger.log(f'parsum={sum(torch.cat([x.detach().view(-1) for x in simulator.pred_reward.parameters()]))}..gradsum={sum(torch.cat([x.grad.view(-1) for x in simulator.pred_reward.parameters()]))}\n')
-                if torch.isnan(list(simulator.pred_reward.parameters())[0].grad).sum()==0:
-                    torch.nn.utils.clip_grad_norm_(simulator.pred_reward.parameters(), 1)
-                    # torch.nn.utils.clip_grad_value_(simulator.pred_reward.parameters(), 0.1)
-                    sim_opt.step()
-                else:
-                    print('\nSKIP, NAN ')
-                sim_opt.zero_grad()
+                _, no_change_loss, _ = results[0]  # action 0 results
+                for ex, (_, l, sa) in enumerate(results):
+                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) # % gain for changing parameters
+                    data['state_action'].append(sa.tolist())
+                    data['reward'].append(reward)
+                    data['video'].append(curr_video)
 
                 # new state: the one with smallest loss
                 l = min(*[x[1] for x in results], 1e99)
                 state = [x[0] for x in results if x[1]==l][-1]
                 set_state(state, model, simulator, optimizer)
 
-                # log
-                text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} sim_loss={log_loss} nn_loss:{l}'
-                tqdm.write(text)
-                logger.log(text+'\n')
-                logger.log(f'       | '+"\n       | ".join([f"NN:{l:.3f}, RW:({p.item():.3f}-{(loss-l)/(1+abs(loss))*20:.3f})^2" for _,l,p in results])+'\n')
+            # log
+            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nn_loss:{l}'
+            tqdm.write(text)
+            logger.log(text+'\n')
 
-            if np.random.rand()>.95:
-                a,b,c = (np.random.rand(3)*10+1).astype(int)
-                simulator.close = a ; simulator.open = b ; simulator.hot = max(a,b,c)
+            if np.random.rand()>.8:
+                # chaos for more exploration & learn to recover
+                a,b,c = (np.random.rand(3)**3*20).astype(int)
+                simulator.close = int(a*np.random.rand())+1
+                simulator.open = max(simulator.close+1,b)
+                simulator.dhot = max(simulator.open+1,c)
+                simulator.er_k = int(np.random.rand()*6)
 
-            # FINAL SAVE
-            if np.random.rand()>.9 or e==n_iter-1:
-                torch.save(simulator.pred_reward.state_dict(), save_path)
-        # except Exception as e: raise e
-        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
+            # SAVE
+            pd.DataFrame.from_dict(data).to_csv(save_path)
+        except Exception as e: raise e
+        # except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
         pbar.update(1)
-        if time()-t0 > 60*60*4: torch.save(simulator.pred_reward.state_dict(), save_path) ; break
+        if time()-t0 > 60*60*8: break#stop after 8h
 
 
 def simulate(simulator, imgs):
@@ -145,7 +136,7 @@ def simulate(simulator, imgs):
 def get_svs_gt(imgs, tgs, bs):
     xs = []; ys = []; batches = (len(imgs)-10)//bs
     for i in range(batches):
-        idx = i*bs
+        idx = i*bs +10
         # NN input
         x = imgs[idx:idx+bs]
 
@@ -171,28 +162,30 @@ def set_state(s, model, simulator, optim):
         simulator.open, simulator.dhot, simulator.count, \
         simulator.Threshold_H, simulator.Threshold_L = s[2]
 
-
-def next_video(args, rnd, i):
+def next_video(args, i, bs):
     # get random video / framerate
     if np.random.rand()>.5:
-        p = 1/((np.array([0,1,2,3,4])-args.framerate)**2+2)
-        args.framerate = np.random.choice([0.5,1,2,4,10], p=p/p.sum()) if rnd else 2
-        args.framerate = args.framerate if args.framerate%1>0 else int(args.framerate)
+        # probably a similar framerate
+        # NOTE: even if framerate do not change the sequence of video selected afterwards could be different
+        p = 1/((np.array([3,4,5])-args.framerate)**2+2)
+        args.framerate = int(np.random.choice([1,4,15], p=p/p.sum()))
     else:
-        i = (i+1) if np.random.rand()>.5 else int(np.random.rand()*77771)
+        # probably a similar video ; otherwise a random video
+        i = (i+1) if np.random.rand()>.2 else int(np.random.rand()*77771)
     
-    ds = SimulationFastDataset(args, 999) # 42*5 + 10
-    infos, imgs, tgs, _ =  ds[i % len(ds)]
+    ds = SimulationFastDataset(args, 999)  # select by framerate
+    infos, imgs, tgs, _ =  ds[i % len(ds)] # select by video
     
     # get random interval of frames from video sequence
-    n_batches = min((len(imgs)-10) // 32, 3)
-    needed = 10 + 32*n_batches
+    n_batches = min((len(imgs)-10) // bs, 3)
+    needed = 10 + bs*n_batches
     possible_starts = len(imgs) - needed
     i = int(np.random.rand()*possible_starts)
     
     # select that interval
     infos = infos[i:i+needed]
     imgs  = imgs[i:i+needed]
+    tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
     tgs[:,0] -= i
     tgs = tgs[tgs[:,0]>=0]
 
@@ -223,19 +216,11 @@ def load_pretrained(args, device='cuda'):
     model.load_state_dict(w, strict=False)
     return model, optimizer, loss_fn
 
-def warmup_agent(pred_reward):
-    ## init reward to predict  zero results
-    pred_reward.train()
-    # with torch.no_grad():
-    #     for p in pred_reward.parameters():
-    #         p.copy_(torch.rand_like(p)/1000-0.0005)
-
-
-def transform(svss, gt_boxes, aug=True):
+def transform(svss, gt_boxes, aug=True, batch_size=32):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
-        if aug and i>=26: continue # only 32 for train
-        if not aug and i<22: continue # from 26 to 42 for test
+        if aug     and i>=batch_size: continue # first 32 of 42 for train
+        if not aug and i<batch_size*.9: continue # from 28 to 42 for test
         
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
@@ -269,7 +254,6 @@ def transform(svss, gt_boxes, aug=True):
 
         imgs.append(svs)
         gts.append(gt)
-        if len(imgs)==32: break
     gts = torch.cat(gts, dim=0)
     imgs = (((torch.from_numpy(np.stack(imgs))/255) -.1)/.9).permute(0,3,1,2)
     return imgs, gts
@@ -281,9 +265,8 @@ if __name__=='__main__':
     parser.add_argument('--n_iter', default=1200, type=int)
     parser.add_argument('--onlycountingloss', action='store_true')
     args = parser.parse_args()
-    args.use_cars=True
     args.crop_svs=True
-    args.out_path = 'E:/dataset/_outputs'  # TODO: remove at the end
+    args.dataset='all'
     args.exp_name='plogs/'+args.policy.split('.')[0]
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     main(args, device)
