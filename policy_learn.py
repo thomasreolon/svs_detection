@@ -217,7 +217,7 @@ def load_pretrained(args, device='cuda'):
         ], lr=args.lr/3, weight_decay=2e-2, betas=(0.92, 0.999))
 
     # Load Pretrained
-    path = f'{args.out_path}/{args.pretrained}'
+    path = args.pretrained if os.path.isfile(args.pretrained) else f'{args.out_path}/{args.pretrained}'
     if not os.path.exists(path): raise Exception(f'--pretrained="{path}" should be the baseline model')
     w = torch.load(path, map_location='cpu')
     model.load_state_dict(w, strict=False)

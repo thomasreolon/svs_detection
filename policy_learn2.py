@@ -15,10 +15,9 @@ from models import build as build_model, ComputeLoss
 
 def main(args, device):
     # settings
-    batch_size = 42 # 32 train + 10 test
+    batch_size   = 42 # 32 train + 10 test
     number_forks = 4
     n_iter = args.n_iter
-    logger = StatsLogger(args)
 
     # yolo (differentiable)
     model, optimizer, loss_fn = load_pretrained(args, device)
@@ -30,12 +29,14 @@ def main(args, device):
 
     # stats collector
     data = {'state_action':[], 'reward':[], 'video':[]}
+    logger = StatsLogger(args)
 
     v = 4 ; t0 = time()
     pbar = tqdm(range(n_iter))
     for e in pbar:
         try:
-            curr_video, imgs, tgs, v = next_video(args, v, batch_size)
+            bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size)
+            simulator.updateevery = bs
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
@@ -43,7 +44,7 @@ def main(args, device):
             [simulator(i) for i in imgs[:10]]
 
             # divide video in batches of (32) ; skip first 10 frames
-            x_gs, ys = get_svs_gt(imgs, tgs, batch_size)
+            x_gs, ys = get_svs_gt(imgs, tgs, bs)
 
             for b, (x_, y_) in enumerate(zip(x_gs, ys)):
                 results = []
@@ -52,16 +53,16 @@ def main(args, device):
                     if fork==0: simulator.count = -99999    # negative count does not change params: always static action (0,0,0) for fork=0
                     if fork>0: 
                         set_state(start, model, simulator, optimizer)
-                        simulator.count = b*batch_size
+                        simulator.count = b*bs
 
                     # simulate
                     xt = simulate(simulator, x_)
 
                     # overfit NN
-                    n_ep = 2 #+ (e==0 and b==0)*10
+                    n_ep = 5 + (e==0 and b==0)*5
                     for ex in range(n_ep):
                         oldseed = init_seeds(e*900+v*100+ex)
-                        x,y = transform(xt.copy(), y_.clone(), ex!=n_ep-1, batch_size-10)
+                        x,y = transform(xt.copy(), y_.clone(), train=(ex!=n_ep-1), train_batch=int(bs*0.762))
 
                         # import cv2 # show gt
                         # for j in range(len(x)):
@@ -123,8 +124,8 @@ def main(args, device):
 
             # SAVE
             pd.DataFrame.from_dict(data).to_csv(save_path)
-        except Exception as e: raise e
-        # except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
+        # except Exception as e: raise e
+        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
 
@@ -162,22 +163,27 @@ def set_state(s, model, simulator, optim):
         simulator.open, simulator.dhot, simulator.count, \
         simulator.Threshold_H, simulator.Threshold_L = s[2]
 
-def next_video(args, i, bs):
+def next_video(args, v, bs):
     # get random video / framerate
     if np.random.rand()>.5:
         # probably a similar framerate
         # NOTE: even if framerate do not change the sequence of video selected afterwards could be different
-        p = 1/((np.array([3,4,5])-args.framerate)**2+2)
-        args.framerate = int(np.random.choice([1,4,15], p=p/p.sum()))
+        p = 1/((np.array([2,4,6])-args.framerate)**2+2)
+        args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
     else:
         # probably a similar video ; otherwise a random video
-        i = (i+1) if np.random.rand()>.2 else int(np.random.rand()*77771)
+        v = (v+1) if np.random.rand()>.2 else int(np.random.rand()*77771)
     
     ds = SimulationFastDataset(args, 999)  # select by framerate
-    infos, imgs, tgs, _ =  ds[i % len(ds)] # select by video
+    infos, imgs, tgs, _ =  ds[v % len(ds)] # select by video
+    tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
     
-    # get random interval of frames from video sequence
+    # if sequence too short use only one
     n_batches = min((len(imgs)-10) // bs, 3)
+    if n_batches==0:
+        return len(imgs)-10, curr_video+f':{args.framerate}', imgs, tgs, v
+
+    # get random interval of frames from video sequence
     needed = 10 + bs*n_batches
     possible_starts = len(imgs) - needed
     i = int(np.random.rand()*possible_starts)
@@ -185,7 +191,6 @@ def next_video(args, i, bs):
     # select that interval
     infos = infos[i:i+needed]
     imgs  = imgs[i:i+needed]
-    tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
     tgs[:,0] -= i
     tgs = tgs[tgs[:,0]>=0]
 
@@ -194,7 +199,7 @@ def next_video(args, i, bs):
     imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
     imgs = np.uint8(imgs)
 
-    return curr_video+f':{args.framerate}', imgs, tgs, i
+    return bs, curr_video+f':{args.framerate}', imgs, tgs, v
 
 
 def load_pretrained(args, device='cuda'):
@@ -210,17 +215,17 @@ def load_pretrained(args, device='cuda'):
         ], lr=args.lr/3, weight_decay=2e-2, betas=(0.92, 0.999))
 
     # Load Pretrained
-    path = f'{args.out_path}/{args.pretrained}'
+    path = args.pretrained if os.path.isfile(args.pretrained) else f'{args.out_path}/{args.pretrained}'
     if not os.path.exists(path): raise Exception(f'--pretrained="{path}" should be the baseline model')
     w = torch.load(path, map_location='cpu')
     model.load_state_dict(w, strict=False)
     return model, optimizer, loss_fn
 
-def transform(svss, gt_boxes, aug=True, batch_size=32):
+def transform(svss, gt_boxes, train=True, train_batch=32):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
-        if aug     and i>=batch_size: continue # first 32 of 42 for train
-        if not aug and i<batch_size*.9: continue # from 28 to 42 for test
+        if train     and i>=train_batch: continue # first 32 of 42 for train
+        if not train and i<train_batch*.9: continue # from 28 to 42 for test
         
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
@@ -228,11 +233,11 @@ def transform(svss, gt_boxes, aug=True, batch_size=32):
         c+=1
 
         # hflip aug
-        if aug and np.random.rand()>0.5:
+        if train and np.random.rand()>0.5:
             svs = svs[:,::-1]
             gt[:, 2] = 1-gt[:, 2]
         # shift aug
-        if aug and np.random.rand()>0.5:
+        if train and np.random.rand()>0.5:
             a,b = [int(x) for x in (np.random.rand(2) * 40 -20)]
             col = np.zeros((128,abs(a),1),dtype=np.uint8)
             if a>0:
