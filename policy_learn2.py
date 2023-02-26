@@ -28,7 +28,7 @@ def main(args, device):
     simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, '', batch_size, True, True)
 
     # stats collector
-    data = {'state_action':[], 'reward':[], 'video':[]}
+    data = {'state_action':[], 'reward':[], 'loss':[], 'improvement':[], 'video':[]}
     logger = StatsLogger(args)
 
     v = 4 ; t0 = time()
@@ -59,7 +59,8 @@ def main(args, device):
                     xt = simulate(simulator, x_)
 
                     # overfit NN
-                    n_ep = 5 + (e==0 and b==0)*5
+                    l0 = 0
+                    n_ep = 7 + (e==0 and b==0)*5
                     for ex in range(n_ep):
                         oldseed = init_seeds(e*900+v*100+ex)
                         x,y = transform(xt.copy(), y_.clone(), train=(ex!=n_ep-1), train_batch=int(bs*0.762))
@@ -85,6 +86,7 @@ def main(args, device):
                         optimizer.step()
                         optimizer.zero_grad()
 
+                        if ex==0: l0=loss.item()
                         tqdm.write(f'- {fork}: {loss.item()}')
                         init_seeds(oldseed)
                     
@@ -93,15 +95,17 @@ def main(args, device):
                     loss = float(loss.item())
                     stateaction = simulator._sa
 
-                    results.append((state, loss, stateaction))
+                    results.append((state, loss, stateaction, l0-loss))
                     gc.collect() ; torch.cuda.empty_cache()
 
                 # train reward predictor
-                _, no_change_loss, _ = results[0]  # action 0 results
-                for ex, (_, l, sa) in enumerate(results):
+                _, no_change_loss, _,_ = results[0]  # action 0 results
+                for ex, (_, l, sa, m) in enumerate(results):
                     reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) # % gain for changing parameters
                     data['state_action'].append(sa.tolist())
                     data['reward'].append(reward)
+                    data['loss'].append(l)
+                    data['improvement'].append(m)
                     data['video'].append(curr_video)
 
                 # new state: the one with smallest loss

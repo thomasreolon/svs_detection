@@ -73,16 +73,11 @@ def main(args, device):
                 logger.log('>> changing loss \n')
                 if args.triggering:
                     loss_fn.hyp['cnt']=3
-                loss_fn.gr = .5 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.5)
+                loss_fn.gr = .8 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.8)
             if epoch+1==args.epochs*4//5:
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
-            if epoch+1==args.epochs*9//10 and args.dataset in {'streets23', 'MOT'}:
-                logger.log('>> changing dataset \n')
-                if args.dataset=='streets23': dataset.drop(['mot17', 'synth'])            # change dataset dropping MOT17/Synth videos
-                if args.dataset=='MOT': dataset.drop(['streets23'])                       # change dataset dropping mydataste/mot
-                tr_loader = DataLoader(dataset, batch_size=args.batch_size//4, collate_fn=dataset.collate_fn, shuffle=True)
 
             torch.save(model.state_dict(), model_path)
 

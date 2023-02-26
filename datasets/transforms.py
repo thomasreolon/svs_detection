@@ -261,14 +261,18 @@ def random_shift(image, target, region, sizes):
     cropped_boxes = cropped_boxes.clamp(min=0)
     target["boxes"] = cropped_boxes.view(-1,4)
 
-    # select by in screen
-    keep1 = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+    # # select by in screen
+    # keep1 = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
 
     # select by cut
     hwratio = torch.tensor(list(map(lambda box:  (box[3]-box[1])/(box[2]-box[0]+1e-4), cropped_boxes.view(-1, 4))))
     keep2 = hwratio < 8
 
-    keep = keep1 & keep2
+    # select by area #NOTE: kill bounding boxes less 8 pixels
+    areas = torch.tensor(list(map(lambda box:  (box[3]-box[1])*(box[2]-box[0]), cropped_boxes.view(-1, 4))))
+    keep3 = areas > 7
+
+    keep = keep2 & keep3
     target['boxes'] = target['boxes'][keep]
     target['obj_ids'] = target['obj_ids'][keep]
 
