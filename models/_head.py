@@ -53,7 +53,7 @@ class Detect(nn.Module):
         w = w / w.sum(dim=1).view(-1,1)
         c = torch.stack(((c[:,:,0].sigmoid()*w).sum(1), (c[:,:,1]*w).sum(1)), dim=1) # bs, 2
         if not self.training:
-            c[:,1] += (c[:,0]>0.5).float() # for how loss is implemented
+            c[:,1] = torch.max(c[:,1], (c[:,0]>0.5).float())
 
         return (None,x,c) if self.training else (torch.cat(z, 1),None,c) if self.export else (torch.cat(z, 1), x, c)
 
