@@ -5,7 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 
-
+"""
+never tried to implement
+"""
 # original code from micronet
 
 class BinaryActivation(Function):

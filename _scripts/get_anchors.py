@@ -22,7 +22,9 @@ boxes = []
 for i in tqdm(range(len(dataset))):
     _,_,y,_ = dataset[i]
     for box in y:
-        boxes.append([(box[-2]*160).item(), (box[-1]*128).item()])
+        w, h = (box[-2]*160).item(), (box[-1]*128).item()
+        if w*h==0:continue
+        boxes.append([w,h])
 
 boxes = np.array(boxes)
 

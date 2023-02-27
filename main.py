@@ -23,7 +23,7 @@ def main(args, device):
     if args.debug: D.debug_setup(logger.out_path[:-10])
 
     # Load Pretrained
-    pretrained = model_path if args.pretrained=='<auto>' else args.pretrained
+    pretrained = model_path if args.pretrained=='<auto>' else args.pretrained if os.path.exists(args.pretrained) else f'{args.out_path}/{args.pretrained}'
     if os.path.exists(pretrained):
         m_w = model.state_dict()
         o_w = torch.load(pretrained, map_location='cpu')
@@ -117,6 +117,7 @@ def center_print(text, pattern=' ', color=0):
 if __name__=='__main__':
     args = get_args_parser().parse_args()
     args.crop_svs=True
+    if args.architecture=='blob':raise Exception('you should call mainblob.py')
     args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)

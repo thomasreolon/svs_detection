@@ -65,7 +65,7 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
         obj_heat = y[0][:,0,:,:,4].cpu() # b,a,h,w,6 to b,h,w
         a = (infos, imgs.cpu(), ids, preds, l_items, obj_heat, counts.cpu())
         for i, (info, img, id, pred, l_item, heat, count) in enumerate(zip(*a)):
-            if is_train and i%20!=0: continue # speeds up video generation by skipping frames for training set
+            if is_train and i%10!=0: continue # speeds up video generation by skipping frames for training set
 
             # create infographics
             boxes = tgs[tgs[:,0]==i, 1:].cpu()
@@ -84,4 +84,29 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
             cumloss.append(l_item)
         D.flush_debug()
 
+
+@torch.no_grad()
+def test_epoch_blob(args, dataset, model, loss_fn, is_train, logger, device, debug):
+    v_split = 'train' if is_train else 'test'
+    logger.new_video(v_split)
+
+    for j, (infos, imgs, tgs, ids) in enumerate(tqdm(DataLoader(dataset, batch_size=256, collate_fn=dataset.collate_fn, shuffle=False))):
+        # Inference
+        y = model(imgs)
+        counts = torch.tensor([[int(len(l)>0), len(l)] for l in y])
+
+        # Log Stats
+        a = (infos, imgs, ids, y, counts)
+        for i, (info, img, id, pred, count) in enumerate(zip(*a)):
+            if is_train and i%10!=0: continue # speeds up video generation by skipping frames for training set
+
+            # create infographics
+            boxes = tgs[tgs[:,0]==i, 1:]
+            pred = torch.from_numpy(pred).float()
+            pred = torch.cat((pred, torch.ones(pred.shape[0],1),torch.zeros(pred.shape[0],1)), dim=1) # fake class & confidence
+            logger.visualize(info, img, boxes[:,1:], id, pred[:,:4], None, count)
+            # log loss for every video
+            curr_video = info.split(';')[0] +':'+ info.split(';')[-1]
+            pred[:, :4] /= torch.tensor([160,128,160,128])
+            logger.collect_stats(f'{v_split}:{curr_video}', count, pred, boxes)
 

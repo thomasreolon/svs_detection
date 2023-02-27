@@ -2,51 +2,22 @@ import torch.nn.functional as F
 import torch, torch.nn as nn
 
 from ._head import Detect
-from ._blocks import MLP, CrossConv
-from .yolov5.models.yolo import check_anchor_order 
-
-class AppendPosEmbedd(nn.Module):
-    def __init__(self, pos_size=16):
-        super().__init__()
-        self.pos_size = pos_size
-        self.p = nn.SELU()
-
-    def forward(self, x):
-        if self.pos_size>0:
-            pos = self.getposemb_sincos(x, self.pos_size)
-            x =  torch.cat((x,pos), dim=1)
-        return x
-
-    @staticmethod
-    def getposemb_sincos(x,c):
-        bs,_,h,w = x.shape
-
-        y_embed = torch.arange(h, dtype=x.dtype).view(1,h,1).expand(bs,-1,w)
-        x_embed = torch.arange(w, dtype=x.dtype).view(1,1,w).expand(bs,h,-1)
-
-        dim_t = torch.arange(c//2, dtype=x.dtype)
-        dim_t = 10000 ** (2 * dim_t.div(2, rounding_mode='trunc') / c)
-
-        pos_x = x_embed[:, :, :, None] / dim_t
-        pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
-        pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
-        return pos.to(x.device)
-
+from ._blocks import MLP, Conv
+from .yolov5.models.yolo import check_anchor_order
 
 class BlockMLPv2(nn.Module):
     def __init__(self, ch_in, ch_out, mlp_size=5):
         super().__init__()
         self.ms = mlp_size
         self.mlp = MLP(mlp_size**2, mlp_size**2, mlp_size**2, 1) # looks at whole image
-        self.cnn = CrossConv(ch_in, ch_out-1)                    # looks locally
+        self.cnn = nn.Sequential(      
+            Conv(ch_in, ch_in, 3),
+            Conv(ch_in, ch_out-1, 3)
+        )   
         self.lin = nn.Sequential(                                # FFNN for channels
             nn.BatchNorm2d(ch_out),
             nn.Conv2d(ch_out, ch_out, 1),
             nn.SiLU(),
-            nn.Conv2d(ch_out, ch_out, 1),
-            nn.SiLU()
         )
 
     def forward(self, x):
@@ -56,7 +27,7 @@ class BlockMLPv2(nn.Module):
         y2 = self.mlp(y2).view(-1, 1, self.ms, self.ms)
         y2 = F.adaptive_avg_pool2d(y2, y1.shape[2:])
         y = torch.cat((y1,y2), dim=1)
-        # y = self.lin(y)
+        y = self.lin(y)
 
         # skip conn
         if x.shape[2:] != y.shape[2:]:
@@ -103,25 +74,27 @@ class MLPDetectorv2(nn.Module):
 
     def __init__(self, ch_in=1, usepos=False, ch_mult=1, mlp_size=5, down=0, anchors=None):
         super().__init__()
-        anchors = anchors if anchors else [[10,13, 16,30, 1,5], [44,44, 50,70, 60,110]]   #[scale1[w1,h1  w2,h2], scale2[w1,h1  w2,h2]]
-        ch = int(8*ch_mult)
-        emb = 16 if usepos else 0
+        anchors = anchors if anchors else [[ 3,7,  5,14,  8,20],[13,31, 20,50, 36,80]]
+        ch = int(4*ch_mult)
 
         downsampler = getdownsampler(down, ch*4, mlp_size)
         modules = [
             BlockMLPv2(ch_in=ch_in,ch_out=ch,mlp_size=mlp_size),
 
-            BlockMLPv2(ch_in=ch,ch_out=ch*2,mlp_size=mlp_size+1),
+            Conv(ch, ch, 3),
+            Conv(ch, ch*2, 3),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
-            BlockMLPv2(ch_in=emb+ch*2,ch_out=ch*4,mlp_size=mlp_size),
+            Conv(ch*2, ch*2, 3),
+            Conv(ch*2, ch*4, 3),
+            nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
+
+            BlockMLPv2(ch_in=ch*4,ch_out=ch*4,mlp_size=mlp_size),
             nn.AvgPool2d(kernel_size=3, stride=2, padding=1),
 
             downsampler,
             Detect(1, anchors, [ch*4, ch*4]),
         ]
-        if usepos:
-            modules.insert(3, AppendPosEmbedd(16))
 
         self.model = nn.ModuleList(modules)
         # Build strides, anchors

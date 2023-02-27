@@ -63,9 +63,12 @@ class StatsLogger():
         svs_img = self.draw_boxes(svs_img, pred_boxes, [9]*len(pred_boxes), drawid=False)
 
         # rescale heatmap
-        heat = np.uint8((heat.sigmoid()*255)[...,None].expand(-1,-1,3))
-        heat = cv2.resize(heat, (self.VIS_SIZE[1], self.VIS_SIZE[0]))
-        heat[heat[...,0]>self.args.detect_thresh*255] = (0,0,200)
+        if heat is not None:
+            heat = np.uint8((heat.sigmoid()*255)[...,None].expand(-1,-1,3))
+            heat = cv2.resize(heat, (self.VIS_SIZE[1], self.VIS_SIZE[0]))
+            heat[heat[...,0]>self.args.detect_thresh*255] = (0,0,200)
+        else:
+            heat = np.uint8(np.zeros([*self.VIS_SIZE,3]))
 
         # print frame infos
         boxes = np.ones_like(heat)*255  # TODO: view what?
@@ -199,7 +202,7 @@ class StatsLogger():
 
             # counting
             c_err = np.array(c_err)
-            em, es = c_err.mean(), c_err.std()
+            em = c_err.mean()
             count = f' Count[meanerr={em:.2f}] '
 
             # detection
@@ -216,8 +219,9 @@ class StatsLogger():
             tmp = [stat for v,stat in cum if selvid in v]
             if len(tmp)==0:continue
             acc,pr,rc,em,ap50,map = np.array(tmp).mean(axis=0).tolist()
+            f1 = pr*rc*2 / (1e-5+pr+rc)
             text = f'>> Averaged Stats For {set_}set [{selvid}]\n'\
-                f'TR[accuracy={acc:.3f}  precision={pr:.3f}  recall={rc:.3f}]\n' \
+                f'TR[accuracy={acc:.3f}  precision={pr:.3f}  recall={rc:.3f} F1={f1:.3f}]\n' \
                 f'CN[meanarr={em:.3f}]\n' \
                 f'DE[map={map:.3f}  ap50={ap50:.3f}]\n'
             self.log(text)

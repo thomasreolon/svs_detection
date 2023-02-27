@@ -3,8 +3,11 @@ from .mini_phi import MiniYoloPHI
 from .mini_phi2 import MiniYoloPHI2
 from .mlp_v2 import MLPDetectorv2
 from .yolov5 import YoloNet5, YoloNet8, YoloNetPhi
+from .blob_detector import BlobDetector
 
 def build(model_name, ch_in = 1):
+    if model_name == 'blob':
+        return BlobDetector()
     if model_name == 'mlp2':
         return MLPDetectorv2(ch_in)
     if model_name == 'yolo5':
