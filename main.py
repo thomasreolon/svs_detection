@@ -117,6 +117,7 @@ def center_print(text, pattern=' ', color=0):
 if __name__=='__main__':
     args = get_args_parser().parse_args()
     args.crop_svs=True
+    if not os.path.isfile(args.policy): args.policy = f'{args.out_path}/{args.policy}'
     if args.architecture=='blob':raise Exception('you should call mainblob.py')
     args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

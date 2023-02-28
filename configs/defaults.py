@@ -13,7 +13,7 @@ def get_args_parser():
     parser.add_argument('--architecture', default='yolophi', type=str,          help='mlp, mlp2, yolo5, yolophi, yolo8')
     parser.add_argument('--simulator', default='static', type=str,              help='static, simple, policy')
     parser.add_argument('--pretrained', default='<auto>', type=str,             help='path to checkpoint, auto will search in output+expname path')
-    parser.add_argument('--policy', default='', type=str,                       help='path to policy, used only if simulator==policy')
+    parser.add_argument('--policy', default='', type=str,                 help='path to policy, used only if simulator==policy')
     parser.add_argument('--quantize', default='no', type=str,                   help='no, 8bit, binary')
 
     # Configuration Setting
@@ -35,5 +35,8 @@ def get_args_parser():
     parser.add_argument('--debug', action='store_true',                         help='generates visuals to understand training')
     parser.add_argument('--skip_train', action='store_true',                    help='tries to load a pretrained model')
     parser.add_argument('--triggering', action='store_true',                    help='modifies dataset to improve rilevation performances  (unbalanced dataset)')
+
+    # Policy
+    parser.add_argument('--n_iter', default=1200, type=int)
 
     return parser

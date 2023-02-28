@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from collections import defaultdict
-from PIL import Image, ImageDraw
+from PIL import Image
 import cv2
 import pickle
 

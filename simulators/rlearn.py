@@ -130,10 +130,13 @@ class RLearnSVS(StaticSVS):
                 ac.append((0,0,0,-1))
             if self.er_k+1<len(self.kernels):
                 ac.append((0,0,0,1))
-            for a in [ # checkpoints: allows the model to jump between configurations (easier exploration)
+            for a in [ # faster exploration (model a little more unstable)
                 (       0,          0,          0,      5-self.er_k), # high kernel
                 (       0,          0,          0,      2-self.er_k), # mid kernel
-                (       0,          0,          0,      0-self.er_k),]: # low kernel
+                (       0,          0,          0,      0-self.er_k), # low kernel
+                ((      0,          5,          5,      0) if max(self.open,self.dhot)<15 else (1-self.close, 10-self.open,11-self.dhot,0)),
+                ((      0,          0,          5,      0) if max(self.dhot)<15           else (1-self.close, 2-self.open,11-self.dhot,0)),
+                ]: 
                 if a not in ac: ac.append(a)
         return ac
 

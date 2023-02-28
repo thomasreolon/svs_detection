@@ -11,21 +11,9 @@ Dynamic Simulator
 perameters change with a previously learned policy
 """
 
-def get_policy_type(type='none'):
-    # maybe will support probabilistic models in the future
-    if type == 'none':
-        return lambda x: torch.tensor([0])
-    if type == 'neural_net':
-        return torch.nn.Sequential(
-            torch.nn.Linear(20, 4),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(4, 1),
-        )
-
-
 class RLearnSVS(StaticSVS):
     name = 'policy'
-    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='policy.pt', updateevery=3, verbose=True, train=False):
+    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='', updateevery=1, verbose=True, train=False):
         # Algorithm parameters
         self.kernels = self.get_kernels()
         self.verbose  = verbose
@@ -35,8 +23,7 @@ class RLearnSVS(StaticSVS):
         self.dhot  = d_hot
         self.updateevery = updateevery
         self.train = train
-        self.pred_reward = get_policy_type()
-        self._load_policy(policy)
+        self.pred_reward = self._load_policy(policy)
         self._i = -1
 
     def init_video(self, init_threshold, std):
@@ -90,7 +77,7 @@ class RLearnSVS(StaticSVS):
             self._sa = state_actions[i] ; self._i = i
         else:
             # pick best action
-            tensors = [self.score(sa) for sa in state_actions]
+            tensors = [self.score(sa.astype(float)) for sa in state_actions]
             i = tensors.index(max(tensors))
 
         if self.verbose and i>0:
@@ -100,19 +87,19 @@ class RLearnSVS(StaticSVS):
 
     def score(self, state_action):
         with torch.no_grad():
-            pred_reward =  self.pred_reward(torch.tensor(state_action,dtype=torch.float)[None])
+            pred_reward =  self.pred_reward(state_action)
         return pred_reward
 
     def _load_policy(self, policy_weights):
-        # policy_weights: absolute path or relative path wrt. home
-        p = policy_weights if os.path.exists(policy_weights) else f'{pathlib.Path(__file__).parent.resolve().__str__()}/../{policy_weights}'
-        if os.path.isfile(p):
-            self.pred_reward = torch.load(p)
-            print(f'loaded policy: {p[-20:]}')
+        name, other = '', []
+        if os.path.isfile(policy_weights):
+            name, *other = torch.load(policy_weights)
+            print(f'loaded policy: {policy_weights[-20:]}')
+        return get_policy(name, *other)
 
     def get_actions(self):
         ac = [(0,0,0,0)]
-        if self.count>=0:
+        if self.count>=0 and self.count<self.updateevery*15:
             if self.dhot<20:
                 ac.append((0,0,1,0))
             if self.dhot-1>max(self.open, self.close):
@@ -148,3 +135,45 @@ def get_heuristics(motion_map):
         a_me = np.nan_to_num(areas.mean(), nan=0)
     
     return [n_cc/100, a_st/10, a_me/10, n_wh/1000]
+
+
+def get_policy(name, *a):
+    if name=='linear':
+        return LinPolicy(*a)
+    if name=='nn':
+        return NNPolicy(*a)
+    if name=='fix':
+        return FixPolicy(*a)
+    return lambda x: torch.tensor([0])
+
+class NNPolicy():
+    def __init__(self, model):
+        self.model = model
+    def __call__(self, x):
+        x = x.reshape(-1,21)
+        new = x[:,:4] + x[:,4:8]
+        x = np.concatenate((new, x), axis=1)
+        x = torch.from_numpy(x).float()
+        with torch.no_grad():
+            y = self.model(x)
+        return y[0].item()
+
+class FixPolicy():
+    def __init__(self, best):
+        self.best = best
+    def __call__(self, x):
+        x = x.reshape(-1,21)
+        x =  (x[:,:4] + x[:,4:8])[0]
+        return 10 - ((x-self.best)**2).sum()
+
+class LinPolicy():
+    def __init__(self, coeff, bias):
+        self.coeff = coeff
+        self.bias = bias
+    def __call__(self, x):
+        x = x.reshape(-1,21)
+        new = x[:,:4] + x[:,4:8]
+        old = x[:,4:8]
+        x = np.concatenate((new, old), axis=1)[0]
+        regr = sum(x*c for x,c in zip(x, self.coeff))
+        return self.bias + regr

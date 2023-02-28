@@ -1,6 +1,7 @@
 from .forensor_sim import StaticSVS
 from .grey import GreyscaleSVS
-from .rlearn import RLearnSVS
+# from .rlearn import RLearnSVS
+from .rlearn2 import RLearnSVS
 from.mhi import MHISVS 
 from.mhigrey import MHIGreySVS 
 
