@@ -16,35 +16,34 @@ from utils import init_seeds, StatsLogger
 from utils.map import box_iou, xywh2xyxy
 from simulators.rlearn2 import RLearnSVS, FixPolicy, LinPolicy, NNPolicy
 from models import build as build_model, ComputeLoss
+from models._head import Detect
 
-def make_neural_net_csv(args, device, save_path):
+def make_neural_net_csv(args, device, save_path, data):
     # settings
     batch_size   = 42 # 32 train + 10 test
-    number_forks = 4
     n_iter = args.n_iter
 
-    # yolo (differentiable)
+    # yolo
     model, optimizer, loss_fn = load_pretrained(args, device)
     model.train()
 
-    # simulator (non differentiable)
+    # simulator
     simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, '', batch_size, True, True)
 
     # stats collector
-    data = {'state_action':[], 'reward':[], 'loss':[], 'improvement':[], 'video':[]}
     logger = StatsLogger(args)
 
     v = 4 ; t0 = time()
+    idx = 0 if not len(data['idx']) else max(*data['idx'])+1
     pbar = tqdm(range(n_iter))
     for e in pbar:
+        gc.collect() ; torch.cuda.empty_cache()
         try:
             bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size)
-            simulator.updateevery = bs
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
-            simulator.count = -10 # when count is negative params are not updated (each processed frame increases count by 1)
-            [simulator(i) for i in imgs[:10]]
+            last_mm = [simulator(i) for i in imgs[:10]] [-1]
 
             # divide video in batches of (32) ; skip first 10 frames
             x_gs, ys = get_svs_gt(imgs, tgs, bs)
@@ -52,21 +51,28 @@ def make_neural_net_csv(args, device, save_path):
             for b, (x_, y_) in enumerate(zip(x_gs, ys)):
                 results = []
                 start = get_state(model, simulator, optimizer)
-                for fork in range(number_forks):
-                    if fork==0: simulator.count = -99999    # negative count does not change params: always static action (0,0,0) for fork=0
-                    if fork>0: 
-                        set_state(start, model, simulator, optimizer)
-                        simulator.count = 0
+
+                stateactions = simulator.get_stateactions(last_mm)
+                for fork, stateaction in enumerate(stateactions):
+                    if fork>0:  set_state(start, model, simulator, optimizer)
+                    init_seeds(e*99999+b)
+
+                    # set simulator params
+                    action = stateaction[:4].astype(int)
+                    simulator.close = action[0]
+                    simulator.open  = action[1]
+                    simulator.dhot  = action[2]
+                    simulator.er_k  = action[3]
 
                     # simulate
                     xt = simulate(simulator, x_)
 
-                    # overfit NN
-                    l0 = 0
-                    n_ep = 7 + (e==0 and b==0)*5
+                    # fit NN
+                    model.train()
+                    n_ep = 7
                     for ex in range(n_ep):
                         oldseed = init_seeds(e*900+v*100+ex)
-                        x,y = transform(xt.copy(), y_.clone(), train=(ex!=n_ep-1), train_batch=int(bs*0.762))
+                        x,y = transform(xt.copy(), y_.clone(), train=True, train_batch=int(bs*0.762))
 
                         # import cv2 # show gt
                         # for j in range(len(x)):
@@ -82,42 +88,50 @@ def make_neural_net_csv(args, device, save_path):
                         #     cv2.waitKey()
 
                         x,y = x.to(device), y.to(device)
-                        _, y_p, y2_p = model(x)
+                        pred, y_p, y2_p = model(x)
                         loss, _ = loss_fn(y_p, y, y2_p)
                         loss.backward()
                         torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
                         optimizer.step()
                         optimizer.zero_grad()
 
-                        if ex==0: l0=loss.item()
-                        tqdm.write(f'- {fork}: {loss.item()}')
                         init_seeds(oldseed)
+
+                    # score similar to MaP
+                    model.eval()
+                    with torch.no_grad():
+                        oldseed = init_seeds(e*900+v*100+ex+1)
+                        x,y = transform(xt.copy(), y_.clone(), train=False, train_batch=int(bs*0.762))
+                        x,y = x.to(device), y.to(device)
+                        pred, y_p, y2_p = model(x)
+                        loss, _ = loss_fn(y_p, y, y2_p)
+                        loss_m = 1 - compute_score_detection(y, pred)
                     
                     # save fork results
                     state = get_state(model, simulator, optimizer)
                     loss = float(loss.item())
-                    stateaction = simulator._sa
 
-                    results.append((state, loss, stateaction, l0-loss))
-                    gc.collect() ; torch.cuda.empty_cache()
+                    results.append((state, loss_m, loss, stateaction, xt[-1]))
 
                 # train reward predictor
-                _, no_change_loss, _,_ = results[0]  # action 0 results
-                for ex, (_, l, sa, m) in enumerate(results):
-                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) # % gain for changing parameters
+                _, no_change_loss, ncl2,_,_ = results[0]  # action 0 results
+                for ex, (_, l, l2, sa, _) in enumerate(results):
+                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) *100 # % gain for changing parameters
+                    reward2 = (ncl2-l2)/(1e-5+abs(ncl2)) *100
                     data['state_action'].append(sa.tolist())
                     data['reward'].append(reward)
-                    data['loss'].append(l)
-                    data['improvement'].append(m)
+                    data['reward2'].append(reward2)
                     data['video'].append(curr_video)
-
+                    data['idx'].append(idx)
+                idx += 1
                 # new state: the one with smallest loss
                 l = min(*[x[1] for x in results], 1e99)
-                state = [x[0] for x in results if x[1]==l][-1]
+                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==l][-1]
                 set_state(state, model, simulator, optimizer)
+                last_mm = mm
 
+                text = f'video:{curr_video} idx:{idx} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} ap:{1-l}'
             # log
-            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nn_loss:{l}'
             tqdm.write(text)
             logger.log(text+'\n')
 
@@ -136,33 +150,31 @@ def make_neural_net_csv(args, device, save_path):
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
 
-def make_blobdetector_csv(args, save_path):
+def make_blobdetector_csv(args, save_path, data):
     # settings
     batch_size   = 16
-    number_forks = 4
     n_iter = args.n_iter *2
 
-    # yolo (differentiable)
+    # yolo
     model = build_model('blob', 1)
 
-    # simulator (non differentiable)
+    # simulator 
     simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, '', batch_size, True, True)
 
     # stats collector
-    data = {'state_action':[], 'reward':[], 'loss':[], 'improvement':[], 'video':[]}
     logger = StatsLogger(args)
 
     v = 4 ; t0 = time()
+    idx = 0 if not len(data['idx']) else max(*data['idx'])+1
     pbar = tqdm(range(n_iter))
     for e in pbar:
+        gc.collect() ; torch.cuda.empty_cache()
         try:
             bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size)
-            simulator.updateevery = bs
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
-            simulator.count = -10 # when count is negative params are not updated (each processed frame increases count by 1)
-            [simulator(i) for i in imgs[:10]]
+            last_mm = [simulator(i) for i in imgs[:10]] [-1]
 
             # divide video in batches of (32) ; skip first 10 frames
             x_gs, ys = get_svs_gt(imgs, tgs, bs)
@@ -170,45 +182,51 @@ def make_blobdetector_csv(args, save_path):
             for b, (x_, y_) in enumerate(zip(x_gs, ys)):
                 results = []
                 start = get_state(None, simulator, None)
-                for fork in range(number_forks):
-                    if fork==0: simulator.count = -99999    # negative count does not change params: always static action (0,0,0) for fork=0
-                    if fork>0: 
-                        set_state(start, None, simulator, None)
-                        simulator.count = 0
+
+                stateactions = simulator.get_stateactions(last_mm)
+                for fork, stateaction in enumerate(stateactions):
+                    if fork>0:  set_state(start, None, simulator, None)
+                    init_seeds(e*99999+b)
+
+                    # set simulator params
+                    action = stateaction[:4].astype(int)
+                    simulator.close = action[0]
+                    simulator.open  = action[1]
+                    simulator.dhot  = action[2]
+                    simulator.er_k  = action[3]
 
                     # simulate
                     xt = simulate(simulator, x_)
-                    xt = (((torch.from_numpy(np.stack(xt))/255) -.1)/.9).permute(0,3,1,2)
+                    x = (((torch.from_numpy(np.stack(xt))/255) -.1)/.9).permute(0,3,1,2)
 
-                    # get MaP
-                    yp = model(xt)
-                    loss = 1 - compute_map(y_, yp) # similar to map (blob detector confidence is always 1)
-
+                    # get precision
+                    yp = model(x)
+                    loss_m = 1 - compute_score_detection(y_, yp)
 
                     # save fork results
                     state = get_state(None, simulator, None)
-                    stateaction = simulator._sa
 
-                    results.append((state, loss, stateaction, 0))
-                    gc.collect() ; torch.cuda.empty_cache()
+                    results.append((state, loss_m, 0, stateaction, xt[-1]))
 
                 # train reward predictor
-                _, no_change_loss, _,_ = results[0]  # action 0 results
-                for ex, (_, l, sa, m) in enumerate(results):
-                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) # % gain for changing parameters
+                _, no_change_loss, ncl2,_,_ = results[0]  # action 0 results
+                for ex, (_, l, l2, sa, _) in enumerate(results):
+                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) *100 # % gain for changing parameters
+                    reward2 = (ncl2-l2)/(1e-5+abs(ncl2)) *100
                     data['state_action'].append(sa.tolist())
                     data['reward'].append(reward)
-                    data['loss'].append(l)
-                    data['improvement'].append(m)
+                    data['reward2'].append(reward2)
                     data['video'].append(curr_video)
-
+                    data['idx'].append(idx)
+                idx += 1
                 # new state: the one with smallest loss
                 l = min(*[x[1] for x in results], 1e99)
-                state = [x[0] for x in results if x[1]==l][-1]
+                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==l][-1]
                 set_state(state, None, simulator, None)
+                last_mm = mm
 
             # log
-            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nn_loss:{l}'
+            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} ap:{1-l}'
             tqdm.write(text)
             logger.log(text+'\n')
 
@@ -228,7 +246,11 @@ def make_blobdetector_csv(args, save_path):
         pbar.update(1)
         if time()-t0 > 60*60*8: break
 
-def compute_map(gts, y_pred):
+def compute_score_detection(gts, y_pred):
+    if isinstance(y_pred, torch.Tensor):
+        gts = gts.cpu()
+        y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
+        y_pred = [p.cpu().numpy()[:,:4] for p in y_pred]
     scores = []
     for i, preds in enumerate(y_pred):
         gt = xywh2xyxy(gts[gts[:,0]==i, 2:])
@@ -264,7 +286,7 @@ def get_svs_gt(imgs, tgs, bs):
 def get_state(model, simulator, optim):
     m = {k:v.detach().cpu().clone() for k,v in model.state_dict().items()} if model is not None else None
     o = deepcopy(optim.state_dict()) if optim is not None else None
-    return [m, o, (simulator.prev_state, simulator.er_k, simulator.close,
+    return [m, o, (simulator.er_k, simulator.close,
                    simulator.open, simulator.dhot, simulator.count,
                    simulator.Threshold_H.copy(), simulator.Threshold_L.copy())]
 
@@ -273,9 +295,9 @@ def set_state(s, model, simulator, optim):
         model.load_state_dict(s[0])
     if optim is not None:
         optim.load_state_dict(s[1])
-    simulator.prev_state, simulator.er_k, simulator.close, \
-        simulator.open, simulator.dhot, simulator.count, \
-        simulator.Threshold_H, simulator.Threshold_L = s[2]
+    simulator.er_k, simulator.close, simulator.open, simulator.dhot, simulator.count = s[2][:-2]
+    simulator.Threshold_H = s[2][-2].copy()
+    simulator.Threshold_L = s[2][-1].copy()
 
 def next_video(args, v, bs):
     # get random video / framerate
@@ -296,6 +318,8 @@ def next_video(args, v, bs):
     # if sequence too short use only one
     n_batches = min((len(imgs)-10) // bs, 3)
     if n_batches==0:
+        imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
+        imgs = np.uint8(imgs)
         return len(imgs)-10, curr_video+f':{args.framerate}', imgs, tgs, v
 
     # get random interval of frames from video sequence
@@ -450,7 +474,7 @@ def make_fixed_policy(data, save_path):
 
 
 if __name__=='__main__':
-    init_seeds(0)
+    init_seeds(1)
 
     # experiment settings
     parser = get_args_parser()
@@ -462,11 +486,15 @@ if __name__=='__main__':
 
     # get infos about run with local search
     csv_path = save_path + args.architecture + '_stats.csv'
-    if not os.path.isfile(csv_path):
-        if args.architecture=='blob':
-            make_blobdetector_csv(args, csv_path)
-        else:
-            make_neural_net_csv(args, device, csv_path)
+    data={'state_action':[], 'reward':[], 'reward2':[], 'video':[], 'idx':[]}
+    if os.path.isfile(csv_path):
+        data = pd.read_csv(csv_path).to_dict('list')
+        del data['Unnamed: 0']
+
+    if args.architecture=='blob':
+        make_blobdetector_csv(args, csv_path, data)
+    else:
+        make_neural_net_csv(args, device, csv_path, data)
     
     init_seeds(1)
     # learn policy model

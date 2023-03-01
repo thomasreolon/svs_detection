@@ -1,4 +1,5 @@
 import torch
+import os
 
 from configs.defaults import get_args_parser
 from datasets.mot_svs_cache import FastDataset
@@ -41,6 +42,7 @@ if __name__=='__main__':
     args = get_args_parser().parse_args()
     args.architecture='blob'
     args.crop_svs=True
+    if not os.path.isfile(args.policy): args.policy = f'{args.out_path}/{args.policy}'
     args.framerate = int(args.framerate) if args.framerate%1==0 else args.framerate
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     init_seeds(100)

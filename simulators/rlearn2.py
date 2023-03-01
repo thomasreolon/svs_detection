@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import torch
-import pathlib
 import os
 
 from .forensor_sim import StaticSVS
@@ -22,15 +21,21 @@ class RLearnSVS(StaticSVS):
         self.close = d_close
         self.dhot  = d_hot
         self.updateevery = updateevery
-        self.train = train
+        self.training = train
         self.pred_reward = self._load_policy(policy)
-        self._i = -1
+
+    def _load_policy(self, policy_weights):
+        name, other = '', []
+        if os.path.isfile(policy_weights):
+            name, *other = torch.load(policy_weights)
+            print(f'loaded policy: {policy_weights[-20:]}')
+        return get_policy(name, *other)
 
     def init_video(self, init_threshold, std):
         """initial values for the threshold (background image without any moving object)"""
         super().init_video(init_threshold, std)
-        self.prev_state = None
-        self.count = -self.updateevery*2
+        # self.prev_state = None
+        self.count = 0
 
     def __call__(self, frame):
         # process as usual
@@ -43,64 +48,38 @@ class RLearnSVS(StaticSVS):
 
         return motion_map
 
-    def update_params(self, motion_map):
+    def get_stateactions(self, motion_map):
         # preprocess & get infos
         params = [self.close, self.open, self.dhot, self.er_k]
         heuristics = get_heuristics(motion_map)
-        state = params + heuristics
-        if self.prev_state is None:
-            self.prev_state = state
+        state = np.array(params + heuristics)
 
-        # input to policy
-        full_state = np.array(state + self.prev_state + [min(50,max(0,self.count))])
-
-        # output
-        action = self.policy(full_state)
-
-        # update
-        self.prev_state = state
-        self.close += action[0]
-        self.open  += action[1]
-        self.dhot  += action[2]
-        self.er_k  += action[3]
-
-    def policy(self, state):
         # get options
         actions = self.get_actions()
-        state_actions = [np.nan_to_num(np.concatenate((a,state)), False, 0,1e2,-1e2) for a in actions]
-        
-        if self.train:
-            # pick random action
-            i = 1+int(np.random.rand()*(len(actions)-1))
-            is_last = int(len(actions)==(i+1))
-            i = (i+1+is_last)%len(actions) if i==self._i else i%len(actions)
-            self._sa = state_actions[i] ; self._i = i
-        else:
-            # pick best action
-            tensors = [self.score(sa.astype(float)) for sa in state_actions]
-            i = tensors.index(max(tensors))
+        state_actions = [np.nan_to_num(np.concatenate((a+state[:4],state)), False, 0,1e2,-1e2) for a in actions]
+        return state_actions
+
+    def update_params(self, motion_map):
+        state_actions = self.get_stateactions(motion_map)
+
+        # pick best action
+        tensors = [self.pred_reward(sa.astype(float)) for sa in state_actions]
+        i = tensors.index(max(tensors))
+        new_state = state_actions[i][:4].astype(int) # new state
 
         if self.verbose and i>0:
-            print(f'switching: {state[:4].tolist()} --> {(state[:4]+actions[i]).tolist()}')
+            print(f'switching: {new_state[4:8].tolist()} --> {(new_state[:4]).tolist()}')
 
-        return actions[i]
-
-    def score(self, state_action):
-        with torch.no_grad():
-            pred_reward =  self.pred_reward(state_action)
-        return pred_reward
-
-    def _load_policy(self, policy_weights):
-        name, other = '', []
-        if os.path.isfile(policy_weights):
-            name, *other = torch.load(policy_weights)
-            print(f'loaded policy: {policy_weights[-20:]}')
-        return get_policy(name, *other)
-
+        # update
+        self.close = new_state[0]
+        self.open  = new_state[1]
+        self.dhot  = new_state[2]
+        self.er_k  = new_state[3]
+    
     def get_actions(self):
         ac = [(0,0,0,0)]
-        if self.count>=0 and self.count<self.updateevery*15:
-            if self.dhot<20:
+        if self.count>=0:
+            if self.dhot<30:
                 ac.append((0,0,1,0))
             if self.dhot-1>max(self.open, self.close):
                 ac.append((0,0,-1,0))
@@ -116,12 +95,18 @@ class RLearnSVS(StaticSVS):
                 ac.append((0,0,0,-1))
             if self.er_k+1<len(self.kernels):
                 ac.append((0,0,0,1))
-            for a in [ # checkpoints: allows the model to jump between configurations (easier exploration)
+            for a in [ # faster exploration (a little more unstable)
                 (       0,          0,          0,      5-self.er_k), # high kernel
                 (       0,          0,          0,      2-self.er_k), # mid kernel
-                (       0,          0,          0,      0-self.er_k),]: # low kernel
+                (       0,          0,          0,      0-self.er_k), # low kernel
+                ((      0,          5,          5,      0) if self.dhot<15            else (1-self.close, 10-self.open,11-self.dhot,0)),
+                ((      0,          0,          5,      0) if self.dhot<15            else (1-self.close, 2-self.open,11-self.dhot,0)),
+                ((      0,         -5,         -5,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,3-self.dhot,0)),
+                ((      0,         -5,          0,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,11-self.dhot,0)),
+                ]:
                 if a not in ac: ac.append(a)
         return ac
+
 
 def get_heuristics(motion_map):
     n_wh = (motion_map>0).sum()
@@ -131,10 +116,10 @@ def get_heuristics(motion_map):
         a_me = 0
     else:
         areas = stats[1:,-1]
-        a_st = np.nan_to_num(areas.std(), nan=0)
-        a_me = np.nan_to_num(areas.mean(), nan=0)
+        a_st = areas.std()
+        a_me = areas.mean()
     
-    return [n_cc/100, a_st/10, a_me/10, n_wh/1000]
+    return [n_cc/100, a_st, a_me/10, n_wh/1000]
 
 
 def get_policy(name, *a):
@@ -144,7 +129,8 @@ def get_policy(name, *a):
         return NNPolicy(*a)
     if name=='fix':
         return FixPolicy(*a)
-    return lambda x: torch.tensor([0])
+
+    return lambda x: 0 # this policy never changes actions
 
 class NNPolicy():
     def __init__(self, model):
@@ -159,12 +145,12 @@ class NNPolicy():
         return y[0].item()
 
 class FixPolicy():
-    def __init__(self, best):
-        self.best = best
+    def __init__(self, target_params):
+        self.target_params = target_params
     def __call__(self, x):
         x = x.reshape(-1,21)
         x =  (x[:,:4] + x[:,4:8])[0]
-        return 10 - ((x-self.best)**2).sum()
+        return 10 - ((x-self.target_params)**2).sum()
 
 class LinPolicy():
     def __init__(self, coeff, bias):

@@ -37,6 +37,6 @@ def get_args_parser():
     parser.add_argument('--triggering', action='store_true',                    help='modifies dataset to improve rilevation performances  (unbalanced dataset)')
 
     # Policy
-    parser.add_argument('--n_iter', default=1200, type=int)
+    parser.add_argument('--n_iter', default=500, type=int)
 
     return parser
