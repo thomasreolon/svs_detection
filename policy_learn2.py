@@ -13,10 +13,11 @@ import torch.nn as nn
 from datasets.simulation_ds import SimulationFastDataset
 from configs.defaults import get_args_parser
 from utils import init_seeds, StatsLogger
-from utils.map import box_iou, xywh2xyxy
+from utils.map import box_iou, xywh2xyxy, update_map, get_map
 from simulators.rlearn2 import RLearnSVS, FixPolicy, LinPolicy, NNPolicy
 from models import build as build_model, ComputeLoss
 from models._head import Detect
+from simulators.policies import FixPredictor, NNPredictor, SVMPredictor
 
 def make_neural_net_csv(args, device, save_path, data):
     # settings
@@ -35,7 +36,7 @@ def make_neural_net_csv(args, device, save_path, data):
 
     v = 4 ; t0 = time()
     idx = 0 if not len(data['idx']) else max(*data['idx'])+1
-    pbar = tqdm(range(n_iter))
+    pbar = tqdm(range(idx, n_iter))
     for e in pbar:
         gc.collect() ; torch.cuda.empty_cache()
         try:
@@ -105,32 +106,31 @@ def make_neural_net_csv(args, device, save_path, data):
                         x,y = x.to(device), y.to(device)
                         pred, y_p, y2_p = model(x)
                         loss, _ = loss_fn(y_p, y, y2_p)
-                        loss_m = 1 - compute_score_detection(y, pred)
+                        map_ = compute_map(y, pred)
                     
                     # save fork results
                     state = get_state(model, simulator, optimizer)
                     loss = float(loss.item())
 
-                    results.append((state, loss_m, loss, stateaction, xt[-1]))
+                    results.append((state, map_, loss, stateaction, xt[-1]))
 
                 # train reward predictor
-                _, no_change_loss, ncl2,_,_ = results[0]  # action 0 results
-                for ex, (_, l, l2, sa, _) in enumerate(results):
-                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) *100 # % gain for changing parameters
-                    reward2 = (ncl2-l2)/(1e-5+abs(ncl2)) *100
+                _, map_base, loss_base,_,_ = results[0]  # action 0 results
+                for ex, (_, map_, loss_, sa, _) in enumerate(results):
+                    reward = (loss_base-loss_)/(1e-5+abs(loss_base)) *100 # % gain for changing parameters
                     data['state_action'].append(sa.tolist())
+                    data['map'].append(map_)
                     data['reward'].append(reward)
-                    data['reward2'].append(reward2)
                     data['video'].append(curr_video)
                     data['idx'].append(idx)
                 idx += 1
                 # new state: the one with smallest loss
-                l = min(*[x[1] for x in results], 1e99)
-                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==l][-1]
+                best_map = max(*[x[1] for x in results], -1e99)
+                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==best_map][0]
                 set_state(state, model, simulator, optimizer)
                 last_mm = mm
 
-                text = f'video:{curr_video} idx:{idx} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} ap:{1-l}'
+                text = f'video:{curr_video} idx:{idx} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} MaP:{best_map}'
             # log
             tqdm.write(text)
             logger.log(text+'\n')
@@ -152,7 +152,7 @@ def make_neural_net_csv(args, device, save_path, data):
 
 def make_blobdetector_csv(args, save_path, data):
     # settings
-    batch_size   = 16
+    batch_size = 40
     n_iter = args.n_iter *2
 
     # yolo
@@ -166,7 +166,7 @@ def make_blobdetector_csv(args, save_path, data):
 
     v = 4 ; t0 = time()
     idx = 0 if not len(data['idx']) else max(*data['idx'])+1
-    pbar = tqdm(range(n_iter))
+    pbar = tqdm(range(idx, n_iter))
     for e in pbar:
         gc.collect() ; torch.cuda.empty_cache()
         try:
@@ -201,32 +201,31 @@ def make_blobdetector_csv(args, save_path, data):
 
                     # get precision
                     yp = model(x)
-                    loss_m = 1 - compute_score_detection(y_, yp)
+                    map_ = compute_map(y_, yp)
 
                     # save fork results
                     state = get_state(None, simulator, None)
 
-                    results.append((state, loss_m, 0, stateaction, xt[-1]))
+                    results.append((state, map_, 0, stateaction, xt[-1]))
 
                 # train reward predictor
-                _, no_change_loss, ncl2,_,_ = results[0]  # action 0 results
-                for ex, (_, l, l2, sa, _) in enumerate(results):
-                    reward = (no_change_loss-l)/(1e-5+abs(no_change_loss)) *100 # % gain for changing parameters
-                    reward2 = (ncl2-l2)/(1e-5+abs(ncl2)) *100
+                _, _, ncl2,_,_ = results[0]  # action 0 results
+                for ex, (_, map_, l2, sa, _) in enumerate(results):
+                    reward = (ncl2-l2)/(1e-5+abs(ncl2)) *100 # % gain for changing parameters
                     data['state_action'].append(sa.tolist())
+                    data['map'].append(map_)
                     data['reward'].append(reward)
-                    data['reward2'].append(reward2)
                     data['video'].append(curr_video)
                     data['idx'].append(idx)
                 idx += 1
                 # new state: the one with smallest loss
-                l = min(*[x[1] for x in results], 1e99)
-                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==l][-1]
+                best_map = max(*[x[1] for x in results], -1e99)
+                state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==best_map][0]
                 set_state(state, None, simulator, None)
                 last_mm = mm
 
             # log
-            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} ap:{1-l}'
+            text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} nnloss:{l2} MaP:{best_map}'
             tqdm.write(text)
             logger.log(text+'\n')
 
@@ -239,29 +238,29 @@ def make_blobdetector_csv(args, save_path, data):
                 simulator.er_k = int(np.random.rand()*6)
 
             # SAVE
-            if np.random.rand()>.95 or e+1==n_iter:
+            if np.random.rand()>.8 or e+1==n_iter:
                 pd.DataFrame.from_dict(data).to_csv(save_path)
         # except Exception as e: raise e
         except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
         pbar.update(1)
         if time()-t0 > 60*60*8: break
 
-def compute_score_detection(gts, y_pred):
-    if isinstance(y_pred, torch.Tensor):
-        gts = gts.cpu()
+def compute_map(gts, y_pred):
+    gts = gts.cpu()
+    if not isinstance(y_pred, torch.Tensor):
+        y_pred = [torch.cat((torch.from_numpy(x),torch.ones(x.shape[0],1),torch.zeros(x.shape[0],1)),dim=1) for x in y_pred]
+    else:
+        y_pred = y_pred.cpu()
         y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
-        y_pred = [p.cpu().numpy()[:,:4] for p in y_pred]
-    scores = []
-    for i, preds in enumerate(y_pred):
-        gt = xywh2xyxy(gts[gts[:,0]==i, 2:])
-        preds = preds/(160,128,160,128)
-        preds = torch.from_numpy(xywh2xyxy(preds))
-        iou = box_iou(gt, preds) > 0.5
-        detected = (iou.sum(dim=1)>0).sum() +1
-        pr = detected.item() / (preds.shape[0]+1e-4)
-        rc = detected.item() / (gt.shape[0]+1e-4)
-        scores.append(2*pr*rc/(pr+rc))
-    return sum(scores) / len(scores)
+    stats = []
+    for i,pred in enumerate(y_pred):
+        gt = gts[gts[:,0]==i,1:]
+        pred = pred/torch.tensor([160.,128,160,128,1,1])
+        pred[:,:4] = xywh2xyxy(pred[:,:4])
+        gt[:,1:]   = xywh2xyxy(gt[:,1:])
+        update_map(pred , gt, stats)
+    map = get_map(stats) [-1]
+    return map
 
 
 def simulate(simulator, imgs):
@@ -474,7 +473,6 @@ def make_fixed_policy(data, save_path):
 
 
 if __name__=='__main__':
-    init_seeds(1)
 
     # experiment settings
     parser = get_args_parser()
@@ -486,11 +484,12 @@ if __name__=='__main__':
 
     # get infos about run with local search
     csv_path = save_path + args.architecture + '_stats.csv'
-    data={'state_action':[], 'reward':[], 'reward2':[], 'video':[], 'idx':[]}
+    data={'state_action':[], 'map':[], 'reward':[], 'video':[], 'idx':[]}
     if os.path.isfile(csv_path):
         data = pd.read_csv(csv_path).to_dict('list')
         del data['Unnamed: 0']
 
+    init_seeds(len(data['idx']))
     if args.architecture=='blob':
         make_blobdetector_csv(args, csv_path, data)
     else:
@@ -501,16 +500,19 @@ if __name__=='__main__':
     data = pd.read_csv(csv_path)
     data['state_action'] = list(map(lambda x:np.array(eval(x)), data['state_action']))
     data['reward'] = data['reward']*20
-    make_linear_policy(
-        data,
-        save_path + args.architecture + '_lin.pt'
-    )
-    make_nn_policy(
-        data,
-        save_path + args.architecture + '_nn.pt'
-    )
-    make_fixed_policy(
-        data,
-        save_path + args.architecture + '_fix.pt'
-    )
+
+    print('creating policies')
+    f1 = FixPredictor(data, 0)
+    torch.save(f1, save_path + args.architecture + '_f1.pt')
+    f2 = FixPredictor(data, 1)
+    torch.save(f2, save_path + args.architecture + '_f2.pt')
+    f3 = FixPredictor(data, 2)
+    torch.save(f2, save_path + args.architecture + '_f2.pt')
+    n1 = NNPredictor(data)
+    torch.save(n1, save_path + args.architecture + '_n1.pt')
+    n2 = NNPredictor(data, 1024, (3,2,2))
+    torch.save(n2, save_path + args.architecture + '_n2.pt')
+    sv = SVMPredictor(data)
+    torch.save(sv, save_path + args.architecture + '_sv.pt')
+
 

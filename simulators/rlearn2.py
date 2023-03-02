@@ -25,11 +25,11 @@ class RLearnSVS(StaticSVS):
         self.pred_reward = self._load_policy(policy)
 
     def _load_policy(self, policy_weights):
-        name, other = '', []
+        policy = lambda x: 0
         if os.path.isfile(policy_weights):
-            name, *other = torch.load(policy_weights)
             print(f'loaded policy: {policy_weights[-20:]}')
-        return get_policy(name, *other)
+            policy = torch.load(policy_weights)
+        return policy
 
     def init_video(self, init_threshold, std):
         """initial values for the threshold (background image without any moving object)"""
@@ -65,7 +65,7 @@ class RLearnSVS(StaticSVS):
         # pick best action
         tensors = [self.pred_reward(sa.astype(float)) for sa in state_actions]
         i = tensors.index(max(tensors))
-        new_state = state_actions[i][:4].astype(int) # new state
+        new_state = state_actions[i].astype(int) # new state
 
         if self.verbose and i>0:
             print(f'switching: {new_state[4:8].tolist()} --> {(new_state[:4]).tolist()}')
@@ -120,46 +120,3 @@ def get_heuristics(motion_map):
         a_me = areas.mean()
     
     return [n_cc/100, a_st, a_me/10, n_wh/1000]
-
-
-def get_policy(name, *a):
-    if name=='linear':
-        return LinPolicy(*a)
-    if name=='nn':
-        return NNPolicy(*a)
-    if name=='fix':
-        return FixPolicy(*a)
-
-    return lambda x: 0 # this policy never changes actions
-
-class NNPolicy():
-    def __init__(self, model):
-        self.model = model
-    def __call__(self, x):
-        x = x.reshape(-1,21)
-        new = x[:,:4] + x[:,4:8]
-        x = np.concatenate((new, x), axis=1)
-        x = torch.from_numpy(x).float()
-        with torch.no_grad():
-            y = self.model(x)
-        return y[0].item()
-
-class FixPolicy():
-    def __init__(self, target_params):
-        self.target_params = target_params
-    def __call__(self, x):
-        x = x.reshape(-1,21)
-        x =  (x[:,:4] + x[:,4:8])[0]
-        return 10 - ((x-self.target_params)**2).sum()
-
-class LinPolicy():
-    def __init__(self, coeff, bias):
-        self.coeff = coeff
-        self.bias = bias
-    def __call__(self, x):
-        x = x.reshape(-1,21)
-        new = x[:,:4] + x[:,4:8]
-        old = x[:,4:8]
-        x = np.concatenate((new, old), axis=1)[0]
-        regr = sum(x*c for x,c in zip(x, self.coeff))
-        return self.bias + regr
