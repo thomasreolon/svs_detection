@@ -10,13 +10,13 @@ from sklearn import linear_model
 from collections import defaultdict
 import torch.nn as nn
 
-from datasets.simulation_ds import SimulationFastDataset
 from configs.defaults import get_args_parser
+from datasets.simulation_ds import SimulationFastDataset
 from utils import init_seeds, StatsLogger
-from utils.map import box_iou, xywh2xyxy, update_map, get_map
-from simulators.rlearn2 import RLearnSVS, FixPolicy, LinPolicy, NNPolicy
+from utils.map import xywh2xyxy, update_map, get_map
 from models import build as build_model, ComputeLoss
 from models._head import Detect
+from simulators import RLearnSVS
 from simulators.policies import FixPredictor, NNPredictor, SVMPredictor
 
 def make_neural_net_csv(args, device, save_path, data):

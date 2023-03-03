@@ -63,7 +63,6 @@ class NNPredictor():
         loss.backward()
         opt.step()
         opt.zero_grad()
-        if _%880==0:print(loss.item())
         if _ == 20: opt = opt = torch.optim.Adam(net.parameters(), lr=1e-3, betas=(0.8, 0.99999))
         if _ == 4000: opt = torch.optim.Adam(net.parameters(), lr=1e-4)
     self.net = net
@@ -89,7 +88,6 @@ class NNPredictor():
         loss.sum().backward()
         opt.step()
         opt.zero_grad()
-        if e%100==0:print((loss.detach()**0.5).tolist())
     net.eval()
 
 
