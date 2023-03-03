@@ -7,6 +7,13 @@ from configs.defaults import get_args_parser
 from datasets.mot_svs_cache import FastDataset
 from models._head import xyxy2xywh
 
+"""
+Note:
+this is a really dummy model, not efficient and not precise.
+It could be greatly improved, but its purpose is not that.
+
+It is a non parametric model --> thus can be used to test wheather the policies are useful or not ; without having to learn any parameters (which can introduce noise)
+"""
 
 def main(args):
     # dataset

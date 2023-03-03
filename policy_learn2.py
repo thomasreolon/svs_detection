@@ -301,10 +301,12 @@ def set_state(s, model, simulator, optim):
 def next_video(args, v, bs):
     # get random video / framerate
     if np.random.rand()>.5:
-        # probably a similar framerate
-        # NOTE: even if framerate do not change the sequence of video selected afterwards could be different
-        p = 1/((np.array([2,4,6])-args.framerate)**2+2)
-        args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
+        # # probably a similar framerate
+        # # NOTE: even if framerate do not change the sequence of video selected afterwards could be different
+        # p = 1/((np.array([2,4,6])-args.framerate)**2+2)
+        # args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
+
+        args.framerate = 4 # same video, other interval / starting point
     else:
         # probably a similar video ; otherwise a random video
         v = (v+1) if np.random.rand()>.2 else int(np.random.rand()*77771)

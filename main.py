@@ -68,13 +68,22 @@ def main(args, device):
 
             # Update Learning Strategy
             if scheduler is not None: scheduler.step()
+            if epoch==args.epochs//3:
+                # after 40 epochs the model is already pretty good at detection so the loss is way smaller wrt the beginning
+                # this resets the momentum of the square of the gradient in adam thus "increasing" the learning rate
+                optimizer = torch.optim.AdamW([
+                    {'params': model.model[1:].parameters(), 'lr': args.lr},
+                    {'params': model.model[0].parameters()}
+                ], lr=args.lr/3, weight_decay=2e-5, betas=(0.92, 0.999))
             if epoch+1==args.epochs//2:
+                ## using .gr = 1 does not change much
                 logger.log_time()
                 logger.log('>> changing loss \n')
                 if args.triggering:
                     loss_fn.hyp['cnt']=3
                 loss_fn.gr = .8 # penalizes confidence of badly predicted BB (in yolo is set to 1, we use 0.1-->0.8)
             if epoch+1==args.epochs*4//5:
+                # changing optimizer at the end increases ap50 by 0.04
                 logger.log('>> changing optimizer \n')
                 optimizer = torch.optim.SGD(model.parameters(), lr=args.lr*.1, momentum=0.9) # diminuish lr
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs-epoch)
