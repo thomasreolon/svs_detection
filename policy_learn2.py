@@ -301,12 +301,10 @@ def set_state(s, model, simulator, optim):
 def next_video(args, v, bs):
     # get random video / framerate
     if np.random.rand()>.5:
-        # # probably a similar framerate
-        # # NOTE: even if framerate do not change the sequence of video selected afterwards could be different
-        # p = 1/((np.array([2,4,6])-args.framerate)**2+2)
-        # args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
-
-        args.framerate = 4 # same video, other interval / starting point
+        # probably a similar framerate
+        # NOTE: even if framerate do not change the of video interval selected afterwards will probably be different
+        p = 1/((np.array([2,4,6])-args.framerate)**2+2)
+        args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
     else:
         # probably a similar video ; otherwise a random video
         v = (v+1) if np.random.rand()>.2 else int(np.random.rand()*77771)
@@ -400,80 +398,6 @@ def transform(svss, gt_boxes, train=True, train_batch=32):
     imgs = (((torch.from_numpy(np.stack(imgs))/255) -.1)/.9).permute(0,3,1,2)
     return imgs, gts
 
-
-def make_linear_policy(data, save_path):
-    ## Train Model
-    x = np.stack([x for x in data['state_action']])
-    x = x.reshape(-1,21)
-    new = x[:,:4] + x[:,4:8]
-    old = x[:,4:8]
-    x= np.concatenate((new, old), axis=1)
-    y = np.stack([x for x in data['reward']])
-    reg = linear_model.LinearRegression()
-    reg.fit(x,y)
-
-    ## Save model
-    coeffs = [c for c in reg.coef_]
-    bias = float(reg.intercept_)
-
-    LinPolicy(coeffs, bias)(np.zeros(21)) # test
-    torch.save(['linear', coeffs, bias], save_path)
-
-def make_nn_policy(data, save_path):
-    def preproc(x):
-        x = x.reshape(-1,21)
-        new = x[:,:4] + x[:,4:8]
-        x = np.concatenate((new, x), axis=1)
-        return torch.from_numpy(x).float()
-
-    ## Train
-    model = nn.Sequential(
-        nn.Linear(25, 6),
-        nn.Dropout(0.1),
-        nn.ReLU(),
-        nn.Linear(6,1),
-        )
-    opt = torch.optim.Adam(model.parameters(), lr=6e-5)
-    for _ in range(3001):
-        batch = data.sample(256)
-        x = np.stack([x for x in batch['state_action']])
-        x = preproc(x)
-        y = torch.from_numpy(np.stack([x for x in batch['reward']])).float()
-        yp = model(x)
-        loss = ((y-yp)**2).mean()
-        loss.backward()
-        opt.step()
-        opt.zero_grad()
-    model.eval()
-
-    # Save
-    NNPolicy(model)(np.zeros(21)) # test
-    torch.save(['nn', model], save_path)
-
-
-
-def make_fixed_policy(data, save_path):
-    # Train (find most used config)
-    repeated = defaultdict(lambda: 0)
-    for i in range(len(data)//4):
-        batch = data[i*4:(i+1)*4]
-        x_t = np.stack([x for x in batch['state_action']])
-        x_t = x_t.reshape(-1,21)
-        x_t =  x_t[:,:4] + x_t[:,4:8]
-        y_t = np.stack([x for x in batch['reward']])
-        top = np.argmax(y_t)
-
-        # which settings are used more
-        params = x_t[top]
-        repeated[tuple(params.tolist())] += 1
-    best_params = sorted([k for k,v in repeated.items() if v>2], key=lambda x:-x[1])[0]
-    best_params = np.array(best_params)
-
-    # Save
-    FixPolicy(best_params)(np.zeros(21)) # test
-    torch.save(['fix', best_params], save_path)
-
-
 if __name__=='__main__':
 
     # experiment settings
@@ -487,7 +411,7 @@ if __name__=='__main__':
     # get infos about run with local search
     csv_path = save_path + args.architecture + '_stats.csv'
     data={'state_action':[], 'map':[], 'reward':[], 'video':[], 'idx':[]}
-    if os.path.isfile(csv_path):
+    if os.path.isfile(csv_path) and not args.reset:
         data = pd.read_csv(csv_path).to_dict('list')
         del data['Unnamed: 0']
 

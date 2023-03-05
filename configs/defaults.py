@@ -17,7 +17,7 @@ def get_args_parser():
     parser.add_argument('--quantize', default='no', type=str,                   help='no, 8bit, binary')
 
     # Configuration Setting
-    parser.add_argument('--framerate', default=2, type=float)
+    parser.add_argument('--framerate', default=4, type=float)
     parser.add_argument('--svs_close', default=1, type=int)
     parser.add_argument('--svs_open', default=3, type=int)
     parser.add_argument('--svs_hot', default=5, type=int)
@@ -38,5 +38,6 @@ def get_args_parser():
 
     # Policy
     parser.add_argument('--n_iter', default=500, type=int)
+    parser.add_argument('--reset', action='store_true')
 
     return parser
