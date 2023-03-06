@@ -23,6 +23,7 @@ def make_neural_net_csv(args, device, save_path, data):
     # settings
     batch_size   = 42 # 32 train + 10 test
     n_iter = args.n_iter
+    i_fps = args.framerate
 
     # yolo
     model, optimizer, loss_fn = load_pretrained(args, device)
@@ -40,7 +41,7 @@ def make_neural_net_csv(args, device, save_path, data):
     for e in pbar:
         gc.collect() ; torch.cuda.empty_cache()
         try:
-            bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size)
+            bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size, i_fps)
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
@@ -115,7 +116,7 @@ def make_neural_net_csv(args, device, save_path, data):
                     results.append((state, map_, loss, stateaction, xt[-1]))
 
                 # train reward predictor
-                _, map_base, loss_base,_,_ = results[0]  # action 0 results
+                _, _, loss_base,_,_ = results[0]  # action 0 results
                 for ex, (_, map_, loss_, sa, _) in enumerate(results):
                     reward = (loss_base-loss_)/(1e-5+abs(loss_base)) *100 # % gain for changing parameters
                     data['state_action'].append(sa.tolist())
@@ -125,7 +126,7 @@ def make_neural_net_csv(args, device, save_path, data):
                     data['idx'].append(idx)
                 idx += 1
                 # new state: the one with smallest loss
-                best_map = max(*[x[1] for x in results], -1e99)
+                best_map = max(*[x[1]+x[2]/100 for x in results], -1e99)
                 state,l2,mm = [(x[0],x[2],x[-1]) for x in results if x[1]==best_map][0]
                 set_state(state, model, simulator, optimizer)
                 last_mm = mm
@@ -135,7 +136,7 @@ def make_neural_net_csv(args, device, save_path, data):
             tqdm.write(text)
             logger.log(text+'\n')
 
-            if np.random.rand()>.8:
+            if np.random.rand()>.9:
                 # chaos for more exploration & learn to recover
                 a,b,c = (np.random.rand(3)**3*20).astype(int)
                 simulator.close = int(a*np.random.rand())+1
@@ -154,6 +155,7 @@ def make_blobdetector_csv(args, save_path, data):
     # settings
     batch_size = 40
     n_iter = args.n_iter *2
+    i_fps = args.framerate
 
     # yolo
     model = build_model('blob', 1)
@@ -170,7 +172,7 @@ def make_blobdetector_csv(args, save_path, data):
     for e in pbar:
         gc.collect() ; torch.cuda.empty_cache()
         try:
-            bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size)
+            bs, curr_video, imgs, tgs, v = next_video(args, v, batch_size, i_fps)
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
@@ -298,13 +300,13 @@ def set_state(s, model, simulator, optim):
     simulator.Threshold_H = s[2][-2].copy()
     simulator.Threshold_L = s[2][-1].copy()
 
-def next_video(args, v, bs):
+def next_video(args, v, bs, fr):
     # get random video / framerate
     if np.random.rand()>.5:
         # probably a similar framerate
         # NOTE: even if framerate do not change the of video interval selected afterwards will probably be different
         p = 1/((np.array([2,4,6])-args.framerate)**2+2)
-        args.framerate = int(np.random.choice([2,4,15], p=p/p.sum()))
+        args.framerate = int(np.random.choice([2,4,15], p=p/p.sum())) if np.random.rand()>.6 else fr
     else:
         # probably a similar video ; otherwise a random video
         v = (v+1) if np.random.rand()>.2 else int(np.random.rand()*77771)

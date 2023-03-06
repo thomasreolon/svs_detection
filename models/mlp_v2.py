@@ -13,7 +13,7 @@ class BlockMLPv2(nn.Module):
         self.cnn = nn.Sequential(      
             Conv(ch_in, ch_in, 3),
             Conv(ch_in, ch_out-1, 3)
-        )   
+        )
         self.lin = nn.Sequential(                                # FFNN for channels
             nn.BatchNorm2d(ch_out),
             nn.Conv2d(ch_out, ch_out, 1),

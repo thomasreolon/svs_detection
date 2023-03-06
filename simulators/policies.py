@@ -1,10 +1,13 @@
 import torch, torch.nn as nn
 import numpy as np
 import pandas as pd
+from scipy import stats as st
+from collections import defaultdict
 
 from sklearn.svm import SVR
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn import svm
 
 class SVMPredictor():
   def __init__(self, data):
@@ -90,10 +93,10 @@ class NNPredictor():
         opt.zero_grad()
     net.eval()
 
-
   @torch.no_grad()
   def get_best_future(self, stateaction):
     best = -1e99, None
+    stateaction[4:8] = stateaction[:4]
     self.net.eval()
     for a in [(0,0,0,0),(1,0,0,0),(-1,0,0,0),(0,1,0,0),(0,-1,0,0),(0,0,1,0),(0,0,-1,0),(0,0,0,1),(0,0,0,-1)]:
       new = np.array(stateaction)[0].copy()
@@ -118,9 +121,6 @@ class NNPredictor():
     score = (pred[0]*self.reward).sum().item()
     return score
 
-from sklearn import svm
-from scipy import stats as st
-from collections import defaultdict
 def get_mode(sa):
   res = []
   if isinstance(sa, pd.DataFrame):

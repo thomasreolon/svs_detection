@@ -21,7 +21,7 @@ def get_phinet(ch_in):
 
 
 class MiniYoloPHI2(nn.Module):
-    """FFNN(wholeimage), CNN(locality)  --> Detection"""
+    """2 detection heads"""
     def __init__(self, ch_in=1):
         super().__init__()
         anchors =[[ 3,7,  5,14,  8,20],[13,31, 20,50, 36,80]]
@@ -37,6 +37,7 @@ class MiniYoloPHI2(nn.Module):
             with torch.no_grad():
                 self.S = torch.tensor([x.shape[-3:-1] for x in self.forward(torch.zeros(1, ch_in, *s))[1]])
             m.stride = s / self.S  # forward
+            check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 2)
             self.stride = m.stride
 

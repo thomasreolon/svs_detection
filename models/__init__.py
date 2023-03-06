@@ -1,6 +1,7 @@
 from ._loss import ComputeLoss
 from .mini_phi import MiniYoloPHI
 from .mini_phi2 import MiniYoloPHI2
+from .mini_phi3 import MiniYoloPHI3
 from .mlp_v2 import MLPDetectorv2
 from .yolov5 import YoloNet5, YoloNet8, YoloNetPhi
 from .blob_detector import BlobDetector
@@ -20,6 +21,8 @@ def build(model_name, ch_in = 1):
         return MiniYoloPHI(ch_in)
     if model_name == 'mini2':
         return MiniYoloPHI2(ch_in)
+    if model_name == 'mini3':
+        return MiniYoloPHI3(ch_in)
     if model_name == 'opt_yolo7':
         return build_special(ch_in, ['yolophi', 0.15, 0.1, 0.05, 8, 0.82, False, True])
     if model_name == 'opt_yolo77':

@@ -53,7 +53,7 @@ class ReLUMax(torch.nn.Module):
     def __init__(self, max):
         super(ReLUMax, self).__init__()
         self.max = max
-        self.relu = torch.nn.ReLU(inplace=False)
+        self.relu = torch.nn.ReLU(inplace=True)
     
     def forward(self, x):
         return torch.clamp(self.relu(x), max = self.max)
@@ -63,7 +63,7 @@ class HSwish(torch.nn.Module):
         super(HSwish, self).__init__()
     
     def forward(self, x):
-        return x * nn.ReLU6(inplace=False)(x + 3) / 6
+        return x * nn.ReLU6(inplace=True)(x + 3) / 6
 
 class SEBlock(torch.nn.Module):
     """Implements squeeze-and-excitation block"""
