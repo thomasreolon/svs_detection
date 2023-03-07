@@ -49,7 +49,7 @@ def get_xpansion_factor(t_zero, beta, block_id, num_blocks):
     """
     return (t_zero * beta) * block_id / num_blocks + t_zero * (num_blocks - block_id) / num_blocks
 
-class ReLUMax(torch.nn.Module):
+class ReLUMax(nn.ReLU):
     def __init__(self, max):
         super(ReLUMax, self).__init__()
         self.max = max
@@ -58,7 +58,7 @@ class ReLUMax(torch.nn.Module):
     def forward(self, x):
         return torch.clamp(self.relu(x), max = self.max)
 
-class HSwish(torch.nn.Module):
+class HSwish(nn.ReLU):
     def __init__(self):
         super(HSwish, self).__init__()
     

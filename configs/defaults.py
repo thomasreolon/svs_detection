@@ -21,6 +21,7 @@ def get_args_parser():
     parser.add_argument('--svs_close', default=1, type=int)
     parser.add_argument('--svs_open', default=3, type=int)
     parser.add_argument('--svs_hot', default=5, type=int)
+    parser.add_argument('--svs_ker', default=0, type=int)
 
     # Training Setting
     parser.add_argument('--batch_size', default=128, type=int)

@@ -10,10 +10,10 @@ import cv2
 
 class StaticSVS():
     name = 'static'
-    def __init__(self, d_close=1, d_open=3, d_hot=5):
+    def __init__(self, d_close=1, d_open=3, d_hot=5, svs_ker=0):
         # Algorithm parameters
         self.kernels = self.get_kernels()
-        self.er_k = 0
+        self.er_k = svs_ker
         self.open = d_open
         self.close = d_close
         self.dhot = d_hot

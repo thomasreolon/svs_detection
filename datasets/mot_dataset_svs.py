@@ -27,6 +27,7 @@ class MOTDataset(torch.utils.data.Dataset):
                  svs_close=1,           # param simulator 1
                  svs_open=3,            # param simulator 2
                  svs_hot=5,             # param simulator 3
+                 svs_ker=0,             # param simulator 4
                  select_video='',       # partial name of video
                  framerate=15,           #  
                  use_cars=False,        # detection of person & cars
@@ -47,7 +48,7 @@ class MOTDataset(torch.utils.data.Dataset):
         self.crop_svs = crop_svs
 
         # simulator:  frame --> motion_map
-        foresensor = get_simulator(simulator, svs_close, svs_open, svs_hot, policy)
+        foresensor = get_simulator(simulator, svs_close, svs_open, svs_hot, svs_ker, policy)
         
         if cache_path is not None:
             cache_path = os.path.abspath(cache_path)

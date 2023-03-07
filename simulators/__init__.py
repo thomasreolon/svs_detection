@@ -13,7 +13,7 @@ supported = [
     MHIGreySVS,     # mhi & greyscale
 ]
 
-def get_simulator(name, svs_close, svs_open, svs_hot, policy):
+def get_simulator(name, svs_close, svs_open, svs_hot, svs_ker, policy):
     Class = None
     for Simulator in supported:
         if name==Simulator.name:
@@ -24,6 +24,6 @@ def get_simulator(name, svs_close, svs_open, svs_hot, policy):
         raise NotImplementedError(f'Simulator {name} not found')
     
     if name!='policy':
-        return Class(svs_close, svs_open, svs_hot)
+        return Class(svs_close, svs_open, svs_hot, svs_ker)
     else:
-        return Class(svs_close, svs_open, svs_hot, policy)
+        return Class(svs_close, svs_open, svs_hot, svs_ker, policy)

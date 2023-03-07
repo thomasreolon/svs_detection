@@ -2,6 +2,23 @@
 @REM python main.py      --exp_name comparison/base/grey --architecture yolophi --framerate 4  --simulator grey   --dataset people 
 @REM python main.py      --exp_name comparison/base/4fr_ --architecture yolophi --framerate 4  --simulator static --dataset people 
 @REM python mainblob.py  --exp_name comparison/base/blob --architecture blob    --framerate 4  --simulator static --dataset people 
+@REM python main.py      --exp_name comparison/base/mhi --architecture yolophi --framerate 4  --simulator mhi --dataset people 
+@REM python main.py      --exp_name comparison/base/grmhi --architecture yolophi --framerate 4  --simulator mhicatgrey --dataset people 
+
+@REM @REM better init: 
+@REM python main.py      --exp_name comparison/stat/1232 --architecture yolophi --framerate 4  --simulator mhicatgrey --dataset people --svs_close 1 --svs_open 2 --svs_hot 3 --svs_ker 2
+@REM python main.py      --exp_name comparison/stat/1355 --architecture yolophi --framerate 4  --simulator mhicatgrey --dataset people --svs_close 1 --svs_open 3 --svs_hot 5 --svs_ker 5
+
+@REM @REM quantize: 
+@REM python main.py --exp_name comparison/quant/8bit --architecture opt_yolo7 --framerate 4 --quantize 8bit
+@REM python main.py --exp_name comparison/quant/1bit --architecture opt_yolo7 --framerate 4 --quantize 1bit
+@REM python main.py --exp_name comparison/quant/2bit --architecture opt_yolo7 --framerate 4 --quantize 2bit
+@REM python main.py --exp_name comparison/quant/4bit --architecture opt_yolo7 --framerate 4 --quantize 4bit
+python main.py --exp_name comparison/quant/by7  --architecture opt_yolo7 --framerate 4 --quantize binary --epochs 20
+python main.py --exp_name comparison/quant/bys  --architecture mini      --framerate 4 --quantize binary --epochs 20
+python main.py --exp_name comparison/quant/bym  --architecture mlp2      --framerate 4 --quantize binary --epochs 20
+python main.py --exp_name comparison/quant/by8  --architecture yolo8     --framerate 4 --quantize binary --epochs 20
+
 
 @REM @REM fps: 
 @REM python main.py --exp_name comparison/base/15fr_ --architecture yolophi --framerate 15   --simulator static --dataset people 
@@ -22,7 +39,7 @@
 @REM python mainblob.py --exp_name comparison/policy/blob_f2 --dont_cache --architecture blob --framerate 4   --simulator policy --policy plogs/blob_f2.pt  --dataset people
 @REM python mainblob.py --exp_name comparison/policy/blob_n1 --dont_cache --architecture blob --framerate 4   --simulator policy --policy plogs/blob_n1.pt  --dataset people
 
-@REM policy NN
+@REM @REM policy NN
 @REM python policy_learn2.py --architecture opt_yolo77 --pretrained comparison/small/77k/model.pt --dataset people
 @REM python main.py --exp_name comparison/policy/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 4   --simulator policy --policy plogs/opt_yolo77_f1.pt  --dataset people
 @REM python main.py --exp_name comparison/policy/77k_f2 --dont_cache --architecture opt_yolo77 --framerate 4   --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
@@ -36,8 +53,8 @@
 @REM python main.py --exp_name comparison/final/s2  --dont_cache --architecture mini2      --quantize 8bit --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
 @REM python main.py --exp_name comparison/final/mlp --dont_cache --architecture mlp2       --quantize binary --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
 
-@REM policy NN fr 15
+@REM @REM policy NN fr 15
 @REM python policy_learn2.py --architecture opt_yolo77 --pretrained comparison/small/77k/model.pt --dataset people --framerate 15 --reset
-python main.py --exp_name comparison/policy_15fps2/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f1.pt  --dataset people
-python main.py --exp_name comparison/policy_15fps2/77k_f2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
-python main.py --exp_name comparison/policy_15fps2/77k_n2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_n2.pt  --dataset people
+@REM python main.py --exp_name comparison/policy_15fps2/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f1.pt  --dataset people
+@REM python main.py --exp_name comparison/policy_15fps2/77k_f2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
+@REM python main.py --exp_name comparison/policy_15fps2/77k_n2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_n2.pt  --dataset people

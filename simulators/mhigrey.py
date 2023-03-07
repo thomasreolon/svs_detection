@@ -25,5 +25,5 @@ class MHIGreySVS(StaticSVS):
         self.prev_mmap = motion_map
 
         # add greyscale infos
-        motion_map = np.concatenate((motion_map, frame), axis=2)
-        return motion_map
+        mhi_cat_grey = np.concatenate((motion_map, frame), axis=2)
+        return mhi_cat_grey

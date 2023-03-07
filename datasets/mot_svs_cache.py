@@ -53,7 +53,8 @@ def get_cache_path(args, v):
     triggering = '_TRG' if v["triggering"] else ''
     tmp = v["policy"].replace("\\","/").split("/")[-1] #fname
     policy = f'_POL[{tmp.split(".")[0]}]' if v["simulator"]=='policy' else ''
-    svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}]' if v["simulator"]!='grey' else ''
+    ker = f',{v["svs_ker"]}' if v["svs_ker"]!=0 else ''
+    svs = f'_SVS[{v["svs_close"]},{v["svs_open"]},{v["svs_hot"]}{ker}]' if v["simulator"]!='grey' else ''
     return  f'{args.out_path}/_ds_cache/ds' \
             f'{svs}' \
             f'_SEL[{selection}]' \
@@ -191,6 +192,7 @@ def get_configs(args, is_train, aug_affine, dataset):
             'svs_close':args.svs_close, 
             'svs_open':args.svs_open,  
             'svs_hot':args.svs_hot,   
+            'svs_ker':args.svs_ker,   
             'framerate':args.framerate, 
             'use_cars':True,
             'simulator':args.simulator,

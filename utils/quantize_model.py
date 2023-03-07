@@ -14,9 +14,18 @@ def quantize(model, method):
         return model
     if method=='8bit':
         # quant_inference true: does not quantize weights (only activations)
-        return prepare8bit(model, quant_inference=False)
+        return prepare8bit(model, quant_inference=False) # DoReFa-Net paper
     if method=='binary':
-        return preparebin(model, A=2, W=2, quant_inference=False)  # A & W are the type of quantization, default 2  # quant inference if you do not train it
+        # A & W are the type of quantization, default 2  # quant inference if you do not train it
+        return preparebin(model, A=2, W=2, quant_inference=False)  # XNorNet paper
+
+
+    if method=='4bit':
+        return prepare8bit(model, a_bits=4, w_bits=4, quant_inference=False)
+    if method=='2bit':
+        return prepare8bit(model, a_bits=2, w_bits=2, quant_inference=False)
+    if method=='1bit':
+        return prepare8bit(model, a_bits=1, w_bits=1, quant_inference=False)
 
 
     if method=='binary_bnn': #### BACKWARD FAILS
