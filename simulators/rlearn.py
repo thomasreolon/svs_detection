@@ -50,8 +50,9 @@ class RLearnSVS(StaticSVS):
     def get_stateactions(self, motion_map):
         # preprocess & get infos
         params = np.array([self.close, self.open, self.dhot, self.er_k],  dtype=np.float32)
-        self.heuristics = (self.heuristics*2 + get_heuristics(motion_map))/3
-        state = np.concatenate((params, self.heuristics))
+        s = 0.33 if self.training else 0.9
+        self.heuristics = self.heuristics*s + get_heuristics(motion_map)*(1-s)
+        state = np.concatenate((params, self.heuristics / (1-s**(self.count+1))  ))
 
         # get options
         actions = self.get_actions()
@@ -67,7 +68,7 @@ class RLearnSVS(StaticSVS):
         new_state = state_actions[i].astype(int) # new state
 
         if self.verbose and i>0:
-            print(f'switching: {new_state[4:8].tolist()} --> {(new_state[:4]).tolist()}')
+            print(f'switching to: {(new_state[:4]).tolist()}')
 
         # update
         self.close = new_state[0]
@@ -77,7 +78,7 @@ class RLearnSVS(StaticSVS):
     
     def get_actions(self):
         ac = [(0,0,0,0)]
-        if self.count>=0:
+        if self.count<15:
             if self.dhot<30:
                 ac.append((0,0,1,0))
             if self.dhot-1>max(self.open, self.close):
@@ -126,5 +127,5 @@ def get_heuristics(motion_map):
     d_y  = m['mu20']**0.5 / n_wh
     d_x  = m['mu02']**0.5 / n_wh
 
-    #      n_blobs,  blob_sizes, blob_sizes, white,    left,   right,      center,   distance from center
-    return (n_cc/100, a_st/100,  a_me/40,    n_wh/1e3, n_wl/5e3, n_wr/5e3, m_x/1e4, m_y/1e4, d_x/10, d_y/10)
+    #           n_blobs,  blob_sizes, blob_sizes, white,    left,   right,      center,   distance from center
+    return np.array([n_cc/100, a_st/100,  a_me/40,    n_wh/1e3, n_wl/5e3, n_wr/5e3, m_x/1e4, m_y/1e4, d_x/10, d_y/10])

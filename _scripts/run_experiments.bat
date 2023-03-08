@@ -14,10 +14,10 @@
 @REM python main.py --exp_name comparison/quant/1bit --architecture opt_yolo7 --framerate 4 --quantize 1bit
 @REM python main.py --exp_name comparison/quant/2bit --architecture opt_yolo7 --framerate 4 --quantize 2bit
 @REM python main.py --exp_name comparison/quant/4bit --architecture opt_yolo7 --framerate 4 --quantize 4bit
-python main.py --exp_name comparison/quant/by7  --architecture opt_yolo7 --framerate 4 --quantize binary --epochs 20
-python main.py --exp_name comparison/quant/bys  --architecture mini      --framerate 4 --quantize binary --epochs 20
-python main.py --exp_name comparison/quant/bym  --architecture mlp2      --framerate 4 --quantize binary --epochs 20
-python main.py --exp_name comparison/quant/by8  --architecture yolo8     --framerate 4 --quantize binary --epochs 20
+@REM python main.py --exp_name comparison/quant/by7  --architecture opt_yolo7 --framerate 4 --quantize binary --epochs 20
+@REM python main.py --exp_name comparison/quant/bys  --architecture mini      --framerate 4 --quantize binary --epochs 20
+@REM python main.py --exp_name comparison/quant/bym  --architecture mlp2      --framerate 4 --quantize binary --epochs 20
+@REM python main.py --exp_name comparison/quant/by8  --architecture yolo8     --framerate 4 --quantize binary --epochs 20
 
 
 @REM @REM fps: 
@@ -58,3 +58,7 @@ python main.py --exp_name comparison/quant/by8  --architecture yolo8     --frame
 @REM python main.py --exp_name comparison/policy_15fps2/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f1.pt  --dataset people
 @REM python main.py --exp_name comparison/policy_15fps2/77k_f2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
 @REM python main.py --exp_name comparison/policy_15fps2/77k_n2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_n2.pt  --dataset people
+
+
+@REM python policy_learn.py --architecture blob --dataset MOT --n_iter 10
+python mainblob.py --exp_name comparison/policy_new/77k --dont_cache --architecture opt_yolo77 --pretrained plogs2/model.pt --framerate 4  --simulator policy --policy plogs2/opt_yolo77_fix.pt  --dataset people

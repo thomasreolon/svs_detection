@@ -9,6 +9,41 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn import svm
 
+############################### POLICY v1 ###############################
+
+
+def clean_h(row):
+  heuristics = eval(row[1]['heuristics'].replace('nan', 'np.nan'))
+  return np.nan_to_num(np.array(heuristics), False, 0)
+def clean_p(row):
+  return np.array(eval(row[1]['params'])[1])
+class FixPredictorV1():
+  def __init__(self, data) -> None:
+    data['best'] = list(map(clean_p, data.iterrows()))
+    data['he'] = list(map(clean_h, data.iterrows()))
+
+    x,y,p = self.make_dataset(data)
+    clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
+    clf.fit(x, y)
+    self.clf = clf
+    self.params = p
+  
+  def __call__(self, stateaction):
+    x = np.nan_to_num(stateaction[4:], False, 0)
+    i = self.clf.predict([x])[0]
+    p = self.params[i]
+    return 32 - np.abs(stateaction[:4]-p).sum()
+
+  def make_dataset(self, data):
+    x,y,p = [], [], []
+    for i, row in data.iterrows():
+      x += [a for a in row['he']]
+      y += [i] * len(row['he'])
+      p.append(row['best'])
+    return x,y,p
+
+############################### POLICY v2 ############################### 
+
 class SVMPredictor():
   def __init__(self, data):
     X = np.stack([y for y in data['state_action']])

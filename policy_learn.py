@@ -13,9 +13,9 @@ from utils.map import xywh2xyxy, update_map, get_map
 from models import build as build_model, ComputeLoss
 from models._head import Detect
 from simulators.rlearn import RLearnSVS
-from simulators.policies import FixPredictor, NNPredictor, SVMPredictor
+from simulators.policies import FixPredictorV1
 
-def make_neural_net_csv(args, device, save_path, data):
+def make_neural_net_csv(args, device, save_csv, save_path, data):
     # set up: model loss simulator
     model, loss_fn = load_pretrained(args, device)
     model.train()
@@ -106,11 +106,12 @@ def make_neural_net_csv(args, device, save_path, data):
             data['heuristics'].append([h.tolist() for h in heuristics])
 
             # SAVE
-            pd.DataFrame.from_dict(data).to_csv(save_path)
+            pd.DataFrame.from_dict(data).to_csv(save_csv)
         # except Exception as e: raise e
-        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}')
+        except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
+    torch.save(model, save_path+'/model.pt')
 
 def compute_map(gts, y_pred):
     gts = gts.cpu()
@@ -241,7 +242,7 @@ def transform(svss, gt_boxes, train=True):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
         if train     and i%15>10: continue # [0..10] train
-        if not train and i%15<13: continue # [13,14] test
+        if not train and i%15!=13: continue # [13] test
         
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
@@ -249,11 +250,11 @@ def transform(svss, gt_boxes, train=True):
         c+=1
 
         # hflip aug
-        if train and np.random.rand()>0.5:
+        if train and np.random.rand()>0.4:
             svs = svs[:,::-1]
             gt[:, 2] = 1-gt[:, 2]
         # shift aug
-        if train and np.random.rand()>0.5:
+        if train:
             a,b = [int(x) for x in (np.random.rand(2) * 40 -20)]
             col = np.zeros((128,abs(a),1),dtype=np.uint8)
             if a>0:
@@ -296,12 +297,14 @@ if __name__=='__main__':
         del data['Unnamed: 0']
 
     init_seeds(len(data['idx']))
-    make_neural_net_csv(args, device, csv_path, data)
+    make_neural_net_csv(args, device, csv_path, save_path, data)
     
     init_seeds(1)
     # learn policy model
     data = pd.read_csv(csv_path)
 
-    print('creating policies')
-
+    print('creating policy')
+    policy = FixPredictorV1(data)
+    policy(np.zeros(4+10))
+    torch.save(policy, save_path + args.architecture + '_fix.pt')
 
