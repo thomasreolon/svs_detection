@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import torch
-import pathlib
 import os
 
 from .forensor_sim import StaticSVS
@@ -11,110 +10,75 @@ Dynamic Simulator
 perameters change with a previously learned policy
 """
 
-def get_policy_type(type='neural_net'):
-    # maybe will support probabilistic models in the future
-    if type == 'neural_net':
-        return torch.nn.Sequential(
-            torch.nn.Linear(17, 4),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(4, 1),
-        )
-
-
 class RLearnSVS(StaticSVS):
     name = 'policy'
-    def __init__(self, d_close=1, d_open=3, d_hot=5, policy='policy.pt', updateevery=3, verbose=True):
+    def __init__(self, d_close=1, d_open=3, d_hot=5, svs_ker=0, policy='', verbose=True, train=False):
         # Algorithm parameters
         self.kernels = self.get_kernels()
         self.verbose  = verbose
-        self.er_k  = 0
+        self.er_k  = svs_ker
         self.open  = d_open
         self.close = d_close
         self.dhot  = d_hot
-        self.updateevery = updateevery
-        self.pred_reward = get_policy_type()
-        self._init_weight(policy)
-        self.pred_reward.eval()
-        self._i = -1
+        self.training = train
+        self.pred_reward = self._load_policy(policy)
+
+    def _load_policy(self, policy_weights):
+        policy = lambda x: 0
+        if os.path.isfile(policy_weights):
+            print(f'loaded policy: {policy_weights[-20:]}')
+            policy = torch.load(policy_weights)
+        return policy
 
     def init_video(self, init_threshold, std):
         """initial values for the threshold (background image without any moving object)"""
         super().init_video(init_threshold, std)
-        self.prev_state = None
-        self.count = -self.updateevery*2
+        # self.prev_state = None
+        self.count = 0
+        self.heuristics = np.zeros(10)
 
     def __call__(self, frame):
         # process as usual
         motion_map = super().__call__(frame)
 
         # update params
-        if self.count % self.updateevery == 0:
-            self.update_params(motion_map[...,0])
+        self.update_params(motion_map[...,0])
         self.count += 1
 
         return motion_map
 
-    def update_params(self, motion_map):
+    def get_stateactions(self, motion_map):
         # preprocess & get infos
-        params = [self.close, self.open, self.dhot, self.er_k]
-        heuristics = get_heuristics(motion_map)
-        state = params + heuristics
-        if self.prev_state is None:
-            self.prev_state = state
+        params = np.array([self.close, self.open, self.dhot, self.er_k],  dtype=np.float32)
+        self.heuristics = (self.heuristics*2 + get_heuristics(motion_map))/3
+        state = np.concatenate((params, self.heuristics))
 
-        # input to policy
-        full_state = np.array(state + self.prev_state + [min(50,max(0,self.count))])
-
-        # output
-        action = self.policy(full_state)
-
-        # update
-        self.prev_state = state
-        self.close += action[0]
-        self.open  += action[1]
-        self.dhot  += action[2]
-        self.er_k  += action[3]
-
-    def policy(self, state):
+        # get options
         actions = self.get_actions()
-        tensors = [self.score(state,a) for a in actions]
+        state_actions = [np.nan_to_num(np.concatenate((a+state[:4],state[4:])), False, 0,1e2,-1e2) for a in actions]
+        return state_actions
 
-        if self.pred_reward.training:
-            i = 1+int(np.random.rand()*(len(actions)-1))
-            is_last = int(len(actions)==(i+1))
-            i = (i+1+is_last)%len(actions) if i==self._i else i%len(actions)
-            self._pred = tensors[i] ; self._i = i
-        else:
-            i = tensors.index(max(tensors))
+    def update_params(self, motion_map):
+        state_actions = self.get_stateactions(motion_map)
+
+        # pick best action
+        tensors = [self.pred_reward(sa) for sa in state_actions]
+        i = tensors.index(max(tensors))
+        new_state = state_actions[i].astype(int) # new state
 
         if self.verbose and i>0:
-            print(f'switching: {state[:4].tolist()} --> {(state[:4]+actions[i]).tolist()}')
-        else:
-            print(f'keep: {state[:4].tolist()} {self.count}  {actions}')
+            print(f'switching: {new_state[4:8].tolist()} --> {(new_state[:4]).tolist()}')
 
-        return actions[i]
-
-    def score(self, state, action):
-        state = state.copy()
-        state[:4] += action
-        state = np.nan_to_num(state, False, 0,1e5,-1e5)
-        tmp = torch.is_grad_enabled()
-        torch.set_grad_enabled(self.pred_reward.training)
-        pred_reward =  self.pred_reward(torch.tensor(state,dtype=torch.float)[None])
-        torch.set_grad_enabled(tmp)
-        return pred_reward
-
-    def _init_weight(self, policy_weights):
-        # policy_weights: absolute path or relative path wrt. home
-        p = policy_weights if os.path.exists(policy_weights) else f'{pathlib.Path(__file__).parent.resolve().__str__()}/../{policy_weights}'
-        if os.path.exists(p):
-            print(f'loaded policy: {p[-20:]}')
-            self.pred_reward.load_state_dict(torch.load(p))
-
+        # update
+        self.close = new_state[0]
+        self.open  = new_state[1]
+        self.dhot  = new_state[2]
+        self.er_k  = new_state[3]
+    
     def get_actions(self):
         ac = [(0,0,0,0)]
         if self.count>=0:
-            if self.dhot<20:
+            if self.dhot<30:
                 ac.append((0,0,1,0))
             if self.dhot-1>max(self.open, self.close):
                 ac.append((0,0,-1,0))
@@ -130,15 +94,18 @@ class RLearnSVS(StaticSVS):
                 ac.append((0,0,0,-1))
             if self.er_k+1<len(self.kernels):
                 ac.append((0,0,0,1))
-            for a in [ # faster exploration (model a little more unstable)
+            for a in [ # quicker convergence at inference
                 (       0,          0,          0,      5-self.er_k), # high kernel
                 (       0,          0,          0,      2-self.er_k), # mid kernel
                 (       0,          0,          0,      0-self.er_k), # low kernel
-                ((      0,          5,          5,      0) if max(self.open,self.dhot)<15 else (1-self.close, 10-self.open,11-self.dhot,0)),
-                ((      0,          0,          5,      0) if max(self.dhot)<15           else (1-self.close, 2-self.open,11-self.dhot,0)),
-                ]: 
-                if a not in ac: ac.append(a)
+                (      0,          5,          5,      0),
+                (      0,          0,          5,      0),
+                ((      0,         -5,         -5,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,3-self.dhot,0)),
+                ((      0,         -5,          0,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,0,0)),
+                ]:
+                if self.training and a not in ac: ac.append(a)
         return ac
+
 
 def get_heuristics(motion_map):
     n_wh = (motion_map>0).sum()
@@ -148,7 +115,16 @@ def get_heuristics(motion_map):
         a_me = 0
     else:
         areas = stats[1:,-1]
-        a_st = np.nan_to_num(areas.std(), nan=0)
-        a_me = np.nan_to_num(areas.mean(), nan=0)
-    
-    return [n_cc/100, a_st/10, a_me/10, n_wh/1000]
+        a_st = areas.std()
+        a_me = areas.mean()
+    _,w,*_ = motion_map.shape
+    n_wl = motion_map[:, :w//2].sum()
+    n_wr = motion_map[:, w//2:].sum()
+    m = cv2.moments(motion_map[:,:])
+    m_y  = m['m10'] / n_wh
+    m_x  = m['m01'] / n_wh
+    d_y  = m['mu20']**0.5 / n_wh
+    d_x  = m['mu02']**0.5 / n_wh
+
+    #      n_blobs,  blob_sizes, blob_sizes, white,    left,   right,      center,   distance from center
+    return (n_cc/100, a_st/100,  a_me/40,    n_wh/1e3, n_wl/5e3, n_wr/5e3, m_x/1e4, m_y/1e4, d_x/10, d_y/10)

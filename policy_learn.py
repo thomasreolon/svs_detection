@@ -2,240 +2,246 @@ from tqdm import tqdm
 import torch
 import os, gc
 import numpy as np
-from copy import deepcopy
 from time import time
 
-from datasets.simulation_ds import SimulationFastDataset
-from configs.defaults import get_args_parser
-from utils import init_seeds, StatsLogger
-from simulators.rlearn import RLearnSVS
-from models import build as build_model, ComputeLoss
+import pandas as pd
 
-def main(args, device):
-    # settings
-    batch_size = 32 # 32 train + 10 test
-    number_forks = 4
-    n_iter = args.n_iter
+from configs.defaults import get_args_parser
+from datasets.simulation_ds import SimulationFastDataset
+from utils import init_seeds, StatsLogger
+from utils.map import xywh2xyxy, update_map, get_map
+from models import build as build_model, ComputeLoss
+from models._head import Detect
+from simulators.rlearn import RLearnSVS
+from simulators.policies import FixPredictor, NNPredictor, SVMPredictor
+
+def make_neural_net_csv(args, device, save_path, data):
+    # set up: model loss simulator
+    model, loss_fn = load_pretrained(args, device)
+    model.train()
+    simulator = RLearnSVS(train=True)
     logger = StatsLogger(args)
 
-    # yolo (differentiable)
-    model, optimizer, loss_fn = load_pretrained(args, device)
-    model.train()
-
-    # simulator (non differentiable)
-    save_path = f"{args.out_path}/{args.policy if len(args.policy) else 'policy.pt'}"
-    simulator = RLearnSVS(args.svs_close, args.svs_open, args.svs_hot, args.policy, batch_size)
-    warmup_agent(simulator.pred_reward)
-    sim_opt = torch.optim.Adam(simulator.pred_reward.parameters(), lr=2e-2)
-
-    v = 4 ; t0 = time()
-    pbar = tqdm(range(n_iter))
+    # global variables: v-->num_video; t0->time ; idx->run_number
+    candidates = None
+    t0 = time()
+    idx = 0 if not len(data['idx']) else max(*data['idx'])+1
+    pbar = tqdm(range(idx, args.n_iter))
     for e in pbar:
+        gc.collect() ; torch.cuda.empty_cache()
         try:
-            curr_video, imgs, tgs, v = next_video(args, e<n_iter-10, v)
+            curr_video, imgs, tgs, idx = next_video(args, idx)
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
-            simulator.count = -10
             [simulator(i) for i in imgs[:10]]
-            tg = tgs.clone()
-            tg[:,0] -= 10
+            x_ = imgs[10:]
+            y_ = tgs.clone()
+            y_[:, 0] -= 10
+            y_ = y_[ (y_[:,0]>=0) ]
 
-            # divide video in batches of (32)
-            x_gs, ys = get_svs_gt(imgs, tgs, batch_size)
-
-            for b, (x_, y_) in enumerate(zip(x_gs, ys)):
+            # local search: 10 steps
+            heuristics = []
+            old_best = []
+            fail = False
+            best_ever = [-1, None]
+            for step in tqdm(range(10)):
+                # neighbours
+                if step == 0:
+                    stateactions = get_starting_actions()
+                else: ## add other configs with evolution from last_good
+                    stateactions = simulator.get_stateactions(last_mm)
+                stateactions += crossover(candidates)
+                
+                # simulations
                 results = []
-                start = get_state(model, simulator, optimizer)
-                for fork in range(number_forks):
-                    if fork==0: simulator.count = -99999    # negative count does not change params: always static action (0,0,0) for fork=0
-                    if fork>0: 
-                        set_state(start, model, simulator, optimizer)
-                        simulator.count = max(0,b*batch_size) 
-                    
+                start = get_state(model, simulator)
+                for fork, stateaction in enumerate(stateactions):
+                    if fork>0:  set_state(start, model, simulator)
+
+                    # set simulator params
+                    action = stateaction[:4].astype(int)
+                    simulator.close = action[0]
+                    simulator.open  = action[1]
+                    simulator.dhot  = action[2]
+                    simulator.er_k  = action[3]
+
                     # simulate
-                    xt = simulate(simulator, x_)
+                    xt, h = simulate(simulator, x_)
+                    heuristics += h
 
-                    # overfit NN
-                    for ex in range(5):
-                        oldseed = init_seeds(e*900+v*100+ex)
-                        x,y = transform(xt.copy(), y_.clone(), ex!=4)
+                    # train NN  & get MaP
+                    map_ = train_eval_map(model, loss_fn, xt, y_, e*9000+step*100)
+                    tqdm.write(f'{curr_video} [{step},{fork}]--> {action.tolist()} : {map_}\n')
 
-                        # import cv2 # show gt
-                        # for j in range(len(x)):
-                        #     pred = (y[y[:,0]==j,2:].clone().cpu() * torch.tensor([160,128,160,128])).int()
-                        #     tmp = ((x[j:j+1].clone()*.9+.1)*255).permute(0,2,3,1).cpu().numpy()[0]
-                        #     for (xc,yc,w,h) in pred.tolist():
-                        #         x1,y1,x2,y2 = xc-w//2, yc-h//2, xc+w//2, yc+h//2
-                        #         tmp[y1:y2, x1:x1+2] = 128
-                        #         tmp[y1:y2, x2:x2-2] = 128
-                        #         tmp[y1:y1+2, x1:x2] = 128
-                        #         tmp[y2:y2-2, x1:x2] = 128
-                        #     cv2.imshow('tmp',np.uint8(tmp))
-                        #     cv2.waitKey()
-
-                        x,y = x.to(device), y.to(device)
-                        _, y_p, count = model(x)
-                        loss, _ = loss_fn(y_p, y, count)
-                        loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-                        optimizer.step()
-                        optimizer.zero_grad()
-
-                        tqdm.write(f'- {fork}: {loss.item()}')
-                        init_seeds(oldseed)
-                    
                     # save fork results
-                    state = get_state(model, simulator, optimizer)
-                    loss = float(loss.item())
-                    pred = simulator._pred
+                    results.append((get_state(model, simulator), map_, stateaction, xt[-1]))
+                
+                # next step
+                results = sorted(results, key=lambda x: -x[1])
+                state, map_, stateaction, last_mm = results[0]
+                set_state(state, model, simulator)
 
-                    results.append((state, loss, pred))
-                    gc.collect() ; torch.cuda.empty_cache()
+                # suboptimal solutions, promote diversity
+                candidates = []
+                for _, m, s, _ in results[1:]:
+                    sc1 = (0.1+m-map_)*10                       # score
+                    sc2 = np.abs(stateaction[:4]-s[:4]).sum()   # diversity
+                    candidates.append((s[:4], sc1 * sc2))
+                candidates = sorted(candidates, key= lambda x: -x[1])
+                candidates = [stateaction[:4], candidates[0][0], candidates[1][0]]
+            
+                # best ever
+                if best_ever[0] < map_:
+                    old_best.append([best_ever[1], best_ever[0]])
+                    best_ever[0] = map_
+                    best_ever[1] = stateaction[:4].astype(int).tolist()
+                elif fail:break
+                else: fail = True
 
-                # train reward predictor
-                sim_loss = 0 ; log_loss = 0
-                state, loss, pred = results[0]  # action 0 results
-                for ex, (_, l, p) in enumerate(results):
-                    reward = (loss-l)/(1+abs(loss))*20 # reward for changing parameters
-                    pitem = p.detach().item()
-                    loss_ex = (p-reward).abs()
-                    loss_ex = loss_ex *   (1 + 4*(pitem*reward<0)) # penalize more wrong classifications
-                    sim_loss = sim_loss + loss_ex
-                    log_loss = log_loss + loss_ex.item()
-                    print('--loss',log_loss, '  :::    pred,rew', p.item(),reward)
-                sim_loss.backward()
-                logger.log(f'parsum={sum(torch.cat([x.detach().view(-1) for x in simulator.pred_reward.parameters()]))}..gradsum={sum(torch.cat([x.grad.view(-1) for x in simulator.pred_reward.parameters()]))}\n')
-                if torch.isnan(list(simulator.pred_reward.parameters())[0].grad).sum()==0:
-                    torch.nn.utils.clip_grad_norm_(simulator.pred_reward.parameters(), 1)
-                    # torch.nn.utils.clip_grad_value_(simulator.pred_reward.parameters(), 0.1)
-                    sim_opt.step()
-                else:
-                    print('\nSKIP, NAN ')
-                sim_opt.zero_grad()
+            data['idx'].append(idx)
+            data['video'].append(curr_video)
+            data['params'].append(best_ever)
+            data['other'].append(old_best[1:])
+            data['heuristics'].append([h.tolist() for h in heuristics])
 
-                # new state: the one with smallest loss
-                l = min(*[x[1] for x in results], 1e99)
-                state = [x[0] for x in results if x[1]==l][-1]
-                set_state(state, model, simulator, optimizer)
-
-                # log
-                text = f'video:{curr_video} params:{simulator.close},{simulator.open},{simulator.dhot},{simulator.er_k} sim_loss={log_loss} nn_loss:{l}'
-                tqdm.write(text)
-                logger.log(text+'\n')
-                logger.log(f'       | '+"\n       | ".join([f"NN:{l:.3f}, RW:({p.item():.3f}-{(loss-l)/(1+abs(loss))*20:.3f})^2" for _,l,p in results])+'\n')
-
-            if np.random.rand()>.95:
-                a,b,c = (np.random.rand(3)*10+1).astype(int)
-                simulator.close = a ; simulator.open = b ; simulator.hot = max(a,b,c)
-
-            # FINAL SAVE
-            if np.random.rand()>.9 or e==n_iter-1:
-                torch.save(simulator.pred_reward.state_dict(), save_path)
+            # SAVE
+            pd.DataFrame.from_dict(data).to_csv(save_path)
         # except Exception as e: raise e
-        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
+        except Exception as e: logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
-        if time()-t0 > 60*60*4: torch.save(simulator.pred_reward.state_dict(), save_path) ; break
+        if time()-t0 > 60*60*8: break#stop after 8h
+
+def compute_map(gts, y_pred):
+    gts = gts.cpu()
+    if not isinstance(y_pred, torch.Tensor):
+        y_pred = [torch.cat((torch.from_numpy(x),torch.ones(x.shape[0],1),torch.zeros(x.shape[0],1)),dim=1) for x in y_pred]
+    else:
+        y_pred = y_pred.cpu()
+        y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
+    stats = []
+    for i,pred in enumerate(y_pred):
+        gt = gts[gts[:,0]==i,1:]
+        pred = pred/torch.tensor([160.,128,160,128,1,1])
+        pred[:,:4] = xywh2xyxy(pred[:,:4])
+        gt[:,1:]   = xywh2xyxy(gt[:,1:])
+        update_map(pred , gt, stats)
+    map = get_map(stats) [-1]
+    return map
+
+def get_starting_actions():
+    return [
+        np.array([1,2,3,2]),
+        np.array([1,3,4,5]),
+        np.array([2,4,11,2]),
+        np.array([1,12,13,5]),
+    ]
+
+def crossover(candidates):
+    if candidates is None: return []
+    res = candidates[1:] + get_starting_actions()
+    for c in candidates[1:] + get_starting_actions():
+        r = np.random.rand(4) **2
+        tmp = r*candidates[0] + c*(1-r)
+        res.append(tmp.round())
+    return res
+
+def train_eval_map(model, loss_fn, xt, y_, base_seed):
+    map_ = 0 ; fail = False ; i = 0
+    optimizer = get_optim(model)
+    new =  train_epoch(model, loss_fn, xt, y_, base_seed, optimizer)
+    while not fail or new > map_: # continue train if improvement
+        map_ = new ; i += 1
+        new =  train_epoch(model, loss_fn, xt, y_, base_seed+i, optimizer)
+        if new < map_: fail = True
+    return map_
+
+def train_epoch(model, loss_fn, xt, y_, base_seed, optimizer):
+    # fit NN
+    model.train()
+    for ex in range(10):
+        oldseed = init_seeds(base_seed+ex)
+        x,y = transform(xt.copy(), y_.clone(), train=True)
+        x,y = x.to(device), y.to(device)
+        pred, y_p, y2_p = model(x)
+        loss, _ = loss_fn(y_p, y, y2_p)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+        optimizer.step()
+        optimizer.zero_grad()
+        init_seeds(oldseed)
+
+    # score similar to MaP
+    model.eval()
+    with torch.no_grad():
+        x,y = transform(xt.copy(), y_.clone(), train=False)
+        x,y = x.to(device), y.to(device)
+        pred, y_p, y2_p = model(x)
+        map_ = compute_map(y, pred)
+    return map_
 
 
 def simulate(simulator, imgs):
-    x = [simulator(i) for i in imgs]
-    return np.stack(x)
+    h,x = [], []
+    for img in imgs:
+        x.append(simulator(img))
+        h.append(simulator.heuristics)
+    return np.stack(x), h
 
-def get_svs_gt(imgs, tgs, bs):
-    xs = []; ys = []; batches = (len(imgs)-10)//bs
-    for i in range(batches):
-        idx = i*bs
-        # NN input
-        x = imgs[idx:idx+bs]
 
-        # NN target
-        y = tgs.clone()
-        y[:, 0] -= idx
-        y = y[ (y[:,0]>=0) & (y[:,0]<bs) ]
-
-        xs.append(x) ; ys.append(y)
-    return xs, ys
-
-def get_state(model, simulator, optim):
-    m = {k:v.detach().cpu().clone() for k,v in model.state_dict().items()}
-    o = deepcopy(optim.state_dict())
-    return [m, o, (simulator.prev_state, simulator.er_k, simulator.close,
+def get_state(model, simulator):
+    m = {k:v.detach().cpu().clone() for k,v in model.state_dict().items()} if model is not None else None
+    return [m, (simulator.er_k, simulator.close,
                    simulator.open, simulator.dhot, simulator.count,
                    simulator.Threshold_H.copy(), simulator.Threshold_L.copy())]
 
-def set_state(s, model, simulator, optim):
-    model.load_state_dict(s[0])
-    optim.load_state_dict(s[1])
-    simulator.prev_state, simulator.er_k, simulator.close, \
-        simulator.open, simulator.dhot, simulator.count, \
-        simulator.Threshold_H, simulator.Threshold_L = s[2]
+def set_state(s, model, simulator):
+    if model is not None:
+        model.load_state_dict(s[0])
+    simulator.er_k, simulator.close, simulator.open, simulator.dhot, simulator.count = s[1][:-2]
+    simulator.Threshold_H = s[1][-2].copy()
+    simulator.Threshold_L = s[1][-1].copy()
 
+def next_video(args, v):
+    v += 1
+    ds = SimulationFastDataset(args, 999)  # select by framerate
+    infos, imgs, tgs, _ =  ds[v % len(ds)] # select by video
+    tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
 
-def next_video(args, rnd, i):
-    # get random video / framerate
-    if np.random.rand()>.5:
-        p = 1/((np.array([0,1,2,3,4])-args.framerate)**2+2)
-        args.framerate = np.random.choice([0.5,1,2,4,10], p=p/p.sum()) if rnd else 2
-        args.framerate = args.framerate if args.framerate%1>0 else int(args.framerate)
-    else:
-        i = (i+1) if np.random.rand()>.5 else int(np.random.rand()*77771)
-    
-    ds = SimulationFastDataset(args, 999) # 42*5 + 10
-    infos, imgs, tgs, _ =  ds[i % len(ds)]
-    
-    # get random interval of frames from video sequence
-    n_batches = min((len(imgs)-10) // 32, 3)
-    needed = 10 + 32*n_batches
-    possible_starts = len(imgs) - needed
-    i = int(np.random.rand()*possible_starts)
-    
-    # select that interval
-    infos = infos[i:i+needed]
-    imgs  = imgs[i:i+needed]
-    tgs[:,0] -= i
-    tgs = tgs[tgs[:,0]>=0]
+    # randomness in video (especially for how train/test are divided)
+    i = int(np.random.rand()*15)
+    tgs[:, 0] -= i
+    imgs = imgs[i:]
 
-    # load greyscale & other
-    curr_video = infos[0].split(';')[0] +':'+ infos[0].split(';')[-1]
+    # to numpy
     imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
     imgs = np.uint8(imgs)
+    curr_video = infos[0].split(';')[0] +':'+ infos[0].split(';')[-1]
+    return curr_video+f':{args.framerate}', imgs, tgs, v
 
-    return curr_video+f':{args.framerate}', imgs, tgs, i
-
+def get_optim(model):
+    return torch.optim.AdamW([
+        {'params': model.model[1:].parameters(), 'lr': args.lr},
+        {'params': model.model[0].parameters()}
+    ], lr=args.lr/3, betas=(0.92, 0.999))
 
 def load_pretrained(args, device='cuda'):
     model = build_model(args.architecture).to(device)
     loss_fn = ComputeLoss(model)
     loss_fn.gr = 0 # so that model that predict bad bounding box are not facilitated
-    if args.onlycountingloss:
-        loss_fn.hyp.update({'box': 0,'cls': 0,'obj': 0})
-
-    optimizer = torch.optim.AdamW([
-            {'params': model.model[1:].parameters(), 'lr': args.lr},
-            {'params': model.model[0].parameters()}
-        ], lr=args.lr/3, weight_decay=2e-2, betas=(0.92, 0.999))
 
     # Load Pretrained
     path = args.pretrained if os.path.isfile(args.pretrained) else f'{args.out_path}/{args.pretrained}'
     if not os.path.exists(path): raise Exception(f'--pretrained="{path}" should be the baseline model')
     w = torch.load(path, map_location='cpu')
     model.load_state_dict(w, strict=False)
-    return model, optimizer, loss_fn
+    return model, loss_fn
 
-def warmup_agent(pred_reward):
-    ## init reward to predict  zero results
-    pred_reward.train()
-    # with torch.no_grad():
-    #     for p in pred_reward.parameters():
-    #         p.copy_(torch.rand_like(p)/1000-0.0005)
-
-
-def transform(svss, gt_boxes, aug=True):
+def transform(svss, gt_boxes, train=True):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
-        if aug and i>=26: continue # only 32 for train
-        if not aug and i<22: continue # from 26 to 42 for test
+        if train     and i%15>10: continue # [0..10] train
+        if not train and i%15<13: continue # [13,14] test
         
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
@@ -243,11 +249,11 @@ def transform(svss, gt_boxes, aug=True):
         c+=1
 
         # hflip aug
-        if aug and np.random.rand()>0.5:
+        if train and np.random.rand()>0.5:
             svs = svs[:,::-1]
             gt[:, 2] = 1-gt[:, 2]
         # shift aug
-        if aug and np.random.rand()>0.5:
+        if train and np.random.rand()>0.5:
             a,b = [int(x) for x in (np.random.rand(2) * 40 -20)]
             col = np.zeros((128,abs(a),1),dtype=np.uint8)
             if a>0:
@@ -269,21 +275,33 @@ def transform(svss, gt_boxes, aug=True):
 
         imgs.append(svs)
         gts.append(gt)
-        if len(imgs)==32: break
     gts = torch.cat(gts, dim=0)
     imgs = (((torch.from_numpy(np.stack(imgs))/255) -.1)/.9).permute(0,3,1,2)
     return imgs, gts
 
-
 if __name__=='__main__':
-    init_seeds(0)
+    # experiment settings
     parser = get_args_parser()
-    parser.add_argument('--n_iter', default=1200, type=int)
-    parser.add_argument('--onlycountingloss', action='store_true')
     args = parser.parse_args()
-    args.use_cars=True
     args.crop_svs=True
-    args.out_path = 'E:/dataset/_outputs'  # TODO: remove at the end
-    args.exp_name='plogs/'+args.policy.split('.')[0]
+    save_path=f'{args.out_path}/plogs2/'
+    os.makedirs(save_path, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    main(args, device)
+
+    # get infos about run with local search
+    csv_path = save_path + args.architecture + '_stats.csv'
+    data={'heuristics':[], 'params':[], 'video':[], 'other':[], 'idx':[]}
+    if os.path.isfile(csv_path) and not args.reset:
+        data = pd.read_csv(csv_path).to_dict('list')
+        del data['Unnamed: 0']
+
+    init_seeds(len(data['idx']))
+    make_neural_net_csv(args, device, csv_path, data)
+    
+    init_seeds(1)
+    # learn policy model
+    data = pd.read_csv(csv_path)
+
+    print('creating policies')
+
+
