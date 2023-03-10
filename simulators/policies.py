@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn import svm
 from sklearn.cluster import KMeans
 
-############################### POLICY v1 ###############################
+############################### POLICY v3-4 ###############################
 
 
 
@@ -20,32 +20,50 @@ def clean_h(row):
   return np.nan_to_num(np.array(heuristics), False, 0)
 def clean_p(row):
   return np.array(eval(row[1]['params'])[1])
+def clean_p2(row):
+  p1 = eval(row[1]['params'])[1]
+  p2 = [a[1] for a in eval(row[1]['other'])]
+  return np.array([p1, p1] + p2 if len(p2) else [p1, p1])
+def dummy(x): return [np.array([0])]
 class FixPredictorV2():
-  def __init__(self, data) -> None:
+  def __init__(self, data, n_clust=3) -> None:
     data['best'] = list(map(clean_p, data.iterrows()))
+    data['top'] = list(map(clean_p2, data.iterrows()))
     data['he'] = list(map(clean_h, data.iterrows()))
 
-    x,y,p = self.make_dataset(data)
+    x,y,p = self.make_dataset(data, n_clust)
     clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
     print('training svm...')
-    clf.fit(x, y)
+    if n_clust>1:
+      clf.fit(x, y)
+    else:
+      clf.decision_function = dummy
     self.clf = clf
     self.params = p
+    self.prev_p = [np.zeros(len(p)), 0]
     print('targets:\n',p)
   
-  def __call__(self, stateaction):
-    x = np.nan_to_num(stateaction[4:], False, 0)
-    i = self.clf.predict([x])[0]
-    p = self.params[i]
-    return 32 - np.abs(stateaction[:4]-p).sum()
+  def reset(self):
+    self.prev_p[0] *= 0
+    self.prev_p[1]  = 0
 
-  def make_dataset(self, data):
+  def __call__(self, stateaction):
+    x = np.nan_to_num(stateaction[4:], False, 0) # heuristics
+    prob_v = np.exp(2*self.clf.decision_function([x])[0]) # get video probabilities
+    self.prev_p[0] += (prob_v / prob_v.sum())   # update means pt.1
+    self.prev_p[1] += 1                         # update means pt.2
+
+    prob_v = self.prev_p[0] / self.prev_p[1] # average prob through time
+    target = (self.params * prob_v.reshape(-1,1)).sum(axis=0) # weighted sum
+    return 32 - np.abs(stateaction[:4]-target).sum() # the closer to target the highest the score
+
+  def make_dataset(self, data, n_clust):
     x,y,p = [], [], []
     for _, row in data.iterrows():
-      p.append(row['best'])
+      p += [a for a in row['top']]
 
     print('training kmeans...')
-    kmeans  = KMeans(n_clusters=3, random_state=1, n_init="auto").fit(p)
+    kmeans  = KMeans(n_clusters=n_clust, random_state=1, n_init="auto").fit(p)
     new_p = kmeans.cluster_centers_.copy()
 
     for _, row in data.iterrows():
@@ -80,6 +98,139 @@ class FixPredictorV1():
       y += [i] * len(row['he'][::100])
       p.append(row['best'])
     return x,y,p
+
+
+def clean_h2(row):
+  heuristics = eval(row[1]['heuristics'].replace('array', '').replace('nan', 'np.nan'))
+  return np.nan_to_num(np.array(heuristics), False, 0)
+def clean_p3(row):
+  return np.array(eval(row[1]['params']))
+class NNPredictorV1():
+  sizes = ['xs','s','m','l','xl']
+  def __init__(self, data, size='s') -> None:
+    data['par'] = list(map(clean_p3, data.iterrows()))
+    data['he'] = list(map(clean_h2, data.iterrows()))
+
+    print('training NN...')
+    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+    x_,y_ = self.make_dataset(data)
+    net = self.make_nn(size).to(dev)
+    self.net = net
+
+    # pretrain # learn (state,action) --> reward
+    opt = torch.optim.Adam(net.parameters(), lr=5e-3, betas=(0.8, 0.9))
+    for _ in range(3001):
+      x,y  = self.sample(x_,y_,dev)
+      yp = net(x)
+      loss = ((y-yp)**2).mean()
+      loss.backward()
+      opt.step()
+      opt.zero_grad()
+      if _ == 40: opt = opt = torch.optim.Adam(net.parameters(), lr=1e-3, betas=(0.8, 0.99999))
+      if _ == 2000: opt = torch.optim.Adam(net.parameters(), lr=1e-4)
+
+    # finetune as RL # learn (state,action) --> (reward + 0.24*future_reward)/1.24 (should smooth the prediction)
+    lr = 6e-6 + min(1e-2, 10/sum(p.numel() for p in net.parameters())**2)
+    opt = torch.optim.Adam(net.parameters(), lr=lr, betas=(0.95, 0.999))
+    for _ in range(1000):
+      x,y  = self.sample(x_,y_,dev,16)
+      for i, xi in enumerate(x):
+        fr = self.future_reward(xi)
+        y[i] += -0.2*y[i] + 0.2*fr
+      yp = net(x)
+      loss = ((y-yp)**2).mean()
+      loss.backward()
+      opt.step()
+      opt.zero_grad()
+      if _ == 900: opt = torch.optim.SGD(net.parameters(), lr=6e-6)
+    
+    self.net = net.cpu().eval()
+
+  @torch.no_grad()
+  def __call__(self, x):
+    if isinstance(x, np.ndarray):
+      x = torch.tensor(x)[None].float()
+    return self.net(x).item()
+
+  def sample(self, x_, y_, dev, bs=256):
+    idxs = (len(x_) * np.random.rand(bs)).astype(int).tolist()
+    return x_[idxs].to(dev).view(-1,14), y_[idxs].to(dev).view(-1,1)
+
+  def make_dataset(self, data):
+    x_ = [] ; y_ = []
+    for _, row in data.iterrows():
+      for a in row['he']:
+        x_.append(torch.from_numpy(np.concatenate((row['par'], a))))
+        y_.append(torch.tensor([(row['map']-0.2)*10]))
+    return torch.stack(x_).float(),torch.stack(y_).float()
+  
+  def future_reward(self, x:torch.Tensor):
+    best = -1e99
+    self.net.eval()
+    for a in [(0,0,0,0),(1,0,0,0),(-1,0,0,0),(0,1,0,0),(0,-1,0,0),(0,0,1,0),(0,0,-1,0),(0,0,0,1),(0,0,0,-1)]:
+      tmp = x.clone()
+      tmp[:4] += torch.tensor(list(a), device=tmp.device, dtype=tmp.dtype)
+      future_r = self(tmp[None])
+      if future_r > best:
+        best = future_r
+    self.net.train()
+    return best
+
+  def make_nn(self, size='s', n_in=14):
+    if size=='xs':
+      net = nn.Sequential(
+        nn.BatchNorm1d(n_in),
+        nn.Linear(n_in, 4),
+        nn.ReLU(),
+        nn.Linear(4,1),
+      )
+    elif size=='s':
+      net = nn.Sequential(
+        nn.BatchNorm1d(n_in),
+        nn.Linear(n_in, 4),
+        nn.ReLU(),
+        nn.Linear(4,4),
+        nn.Dropout(0.05),
+        nn.ReLU(),
+        nn.Linear(4,4),
+        nn.Dropout(0.1),
+        nn.ReLU(),
+        nn.Linear(4,1),
+      )
+    elif size=='m':
+      net = nn.Sequential(
+        nn.BatchNorm1d(n_in),
+        nn.Linear(n_in, 32),
+        nn.Dropout(0.1),
+        nn.ReLU(),
+        nn.Linear(32,1),
+      )
+    elif size=='l':
+      net = nn.Sequential(
+        nn.BatchNorm1d(n_in),
+        nn.Linear(n_in, 16),
+        nn.ReLU(),
+        nn.Linear(16,32),
+        nn.ReLU(),
+        nn.Dropout(0.1),
+        nn.Linear(32,4),
+        nn.ReLU(),
+        nn.Linear(4,1),
+      )
+    elif size=='xl':
+      net = nn.Sequential(
+        nn.BatchNorm1d(n_in),
+        nn.Linear(n_in, 256),
+        nn.Dropout(0.1),
+        nn.ReLU(),
+        nn.Linear(256, 4),
+        nn.ReLU(),
+        nn.Linear(4, 2),
+        nn.ReLU(),
+        nn.Linear(2,1),
+      )
+    return net.float()
+
 
 ############################### POLICY v2 ############################### 
 

@@ -14,9 +14,9 @@ from utils.map import xywh2xyxy, update_map, get_map
 from models import build as build_model, ComputeLoss
 from models._head import Detect
 from simulators.rlearn import RLearnSVS
-from simulators.policies import FixPredictorV2
+from simulators.policies import FixPredictorV2, NNPredictorV1
 
-def make_neural_net_csv(args, device, save_csv, save_path, data):
+def make_neural_net_csv(args, device, save_csv, save_csv2, save_path, data, data2):
     # set up
     simulator = RLearnSVS(train=True)
     logger = StatsLogger(args)
@@ -41,13 +41,13 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
 
             # local search: 10 steps
             heuristics = []
-            old_best = []
+            old_best = [] ; old_he = []
             fails_allowed = 2
-            best_ever = [-2, None]
+            best_ever = [-1, None]
             t1 = time()
             used = {}
             bk_simulator = deepcopy(simulator)
-            for step in tqdm(range(5)):
+            for step in tqdm(range(7)):
                 if time()-t1 > 60*20: break
                 # neighbours
                 if   step == 0:
@@ -66,34 +66,35 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
                 results = []
                 shuffle(stateactions)
                 for fork, stateaction in enumerate(stateactions):
-                    # same start
-                    init_seeds(e*10055)
-                    model, loss_fn = load_pretrained(args, device)
-                    simulator = deepcopy(bk_simulator)
-                    gc.collect() ; torch.cuda.empty_cache()
-
-                    # set simulator params
                     configuration = stateaction[:4].astype(int)
                     if str(configuration) not in used:
+
+                        # same start
+                        init_seeds(e*10055)
+                        model, loss_fn = load_pretrained(args, device)
+                        simulator = deepcopy(bk_simulator)
+                        gc.collect() ; torch.cuda.empty_cache()
+
+                        # set simulator params
                         simulator.close = configuration[0]
                         simulator.open  = configuration[1]
                         simulator.dhot  = configuration[2]
                         simulator.er_k  = configuration[3]
 
-                        simulator.close = 1
-                        simulator.open  = 2
-                        simulator.dhot  = 3
-                        simulator.er_k  = 4
                         # simulate
                         xt, h = simulate(simulator, x_)
 
                         # train NN  & get MaP
                         map_ = train_eval_map(model, loss_fn, xt, y_, e*9000+step*100)
-                        tqdm.write(f'{curr_video} [{step},{fork}]--> {configuration.tolist()} : {map_}\n')
                         used[str(configuration)] = (map_, stateaction, xt[-1], h, (xt[:8], y_[y_[:,0]<8]))
 
                     # save fork results
                     results.append(used[str(configuration)])
+                    tqdm.write(f'{curr_video} [{step},{fork}]--> {configuration.tolist()} : {results[-1][0]}  | best: {best_ever}\n')
+
+                    data2['map'].append(results[-1][0])
+                    data2['heuristics'].append(results[-1][3])
+                    data2['params'].append(configuration.tolist())
                 
                 # next step
                 results = sorted(results, key=lambda x: -x[0])
@@ -110,9 +111,10 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             
                 # best ever
                 if best_ever[0] < map_:
-                    old_best.append([best_ever[0], best_ever[1]])
+                    old_best.append([*best_ever])
                     best_ever[0] = map_
                     best_ever[1] = stateaction[:4].astype(int).tolist()
+                    old_he += heuristics[::5]
                 elif not fails_allowed: break
                 else: fails_allowed -= 1
 
@@ -120,7 +122,7 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             data['video'].append(curr_video)
             data['params'].append(best_ever)
             data['other'].append(old_best[1:])
-
+            heuristics += old_he
             s = max(1, len(heuristics) // 100)
             data['heuristics'].append([h.tolist() for h in heuristics[::s]])
 
@@ -128,11 +130,11 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
 
             # SAVE
             pd.DataFrame.from_dict(data).to_csv(save_csv)
+            pd.DataFrame.from_dict(data2).to_csv(save_csv2)
         # except Exception as e: raise e
         except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
-    torch.save(model.state_dict(), save_path+'/model.pt')
 
 def compute_map(gts, y_pred):
     gts = gts.cpu()
@@ -250,6 +252,7 @@ def eval_epoch(model, xt, y_,):
         x,y = xt.to(device), y_.to(device)
         pred, _, _ = model(x)
         map2 = compute_map(y, pred)
+        print('=>', map1, map2, end='')
 
         # Map prev video
         map_ = map1*0.4 + map2*0.6
@@ -259,6 +262,8 @@ def eval_epoch(model, xt, y_,):
             pred, _, _ = model(x)
             map3 = compute_map(y, pred)
             map_ = map_*0.8 + map3*0.2
+            print(map3)
+        else: print()
 
     init_seeds(tmp)
     return map_
@@ -379,15 +384,31 @@ if __name__=='__main__':
         data = pd.read_csv(csv_path).to_dict('list')
         del data['Unnamed: 0']
 
+    # get infos for policy reward
+    csv_path2 = save_path + args.architecture + '_stats2.csv'
+    data2  = {'heuristics':[], 'params':[], 'map':[]}
+    if os.path.isfile(csv_path2) and not args.reset:
+        data2 = pd.read_csv(csv_path2).to_dict('list')
+        del data2['Unnamed: 0']
+
     init_seeds(len(data['idx']))
-    make_neural_net_csv(args, device, csv_path, save_path, data)
+    make_neural_net_csv(args, device, csv_path, csv_path2, save_path, data, data2)
     
     init_seeds(1)
+
     # learn policy model
     data = pd.read_csv(csv_path)
+    print('creating policy LS')
+    for n_clusters in [1,3,8]:
+        policy = FixPredictorV2(data, n_clusters)
+        policy(np.zeros(4+10))
+        torch.save(policy, save_path + args.architecture + f'_fix{n_clusters}.pt')
 
-    print('creating policy')
-    policy = FixPredictorV2(data)
-    policy(np.zeros(4+10))
-    torch.save(policy, save_path + args.architecture + '_fix.pt')
+    # learn policy NN
+    data = pd.read_csv(csv_path2)
+    print('creating policy NN')
+    for size in NNPredictorV1.sizes:
+        policy = NNPredictorV1(data, size)
+        policy(np.zeros(4+10))
+        torch.save(policy, save_path + args.architecture + f'_nn{size}.pt')
 

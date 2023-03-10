@@ -36,6 +36,8 @@ class RLearnSVS(StaticSVS):
         # self.prev_state = None
         self.count = 0
         self.heuristics = np.zeros(10)
+        if hasattr(self.pred_reward, 'reset'):
+            self.pred_reward.reset()
 
     def __call__(self, frame):
         # process as usual
@@ -110,7 +112,7 @@ class RLearnSVS(StaticSVS):
                 ((      0,         -4,         -4,      0) if self.open>self.close+4  else (1-self.close, 2-self.open,3-self.dhot,0)),
                 ((      0,         -4,          0,      0) if self.open>self.close+4  else (1-self.close, 2-self.open,0,0)),
                 ]:
-                if self.training and a not in ac: ac.append(a)
+                if not self.training and a not in ac: ac.append(a)
         return ac
 
 
