@@ -12,6 +12,7 @@ def init_seeds(n):
         random.seed(n[0])
         np.random.set_state(n[1])
     else:
+        n = int(max(0, min(n,2**30)))
         torch.manual_seed(n)
         random.seed(n)
         np.random.seed(n)

@@ -3,8 +3,9 @@ import torch
 import os, gc
 import numpy as np
 from time import time
-
+from copy import deepcopy
 import pandas as pd
+from random import shuffle
 
 from configs.defaults import get_args_parser
 from datasets.simulation_ds import SimulationFastDataset
@@ -16,9 +17,7 @@ from simulators.rlearn import RLearnSVS
 from simulators.policies import FixPredictorV2
 
 def make_neural_net_csv(args, device, save_csv, save_path, data):
-    # set up: model loss simulator
-    model, loss_fn = load_pretrained(args, device)
-    model.train()
+    # set up
     simulator = RLearnSVS(train=True)
     logger = StatsLogger(args)
 
@@ -28,7 +27,6 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
     idx = 0 if not len(data['idx']) else max(*data['idx'])+1
     pbar = tqdm(range(idx, args.n_iter))
     for e in pbar:
-        gc.collect() ; torch.cuda.empty_cache()
         try:
             curr_video, imgs, tgs, idx = next_video(args, idx)
             print('---> info:', curr_video, len(imgs))
@@ -47,6 +45,8 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             fails_allowed = 2
             best_ever = [-2, None]
             t1 = time()
+            used = {}
+            bk_simulator = deepcopy(simulator)
             for step in tqdm(range(5)):
                 if time()-t1 > 60*20: break
                 # neighbours
@@ -64,36 +64,44 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
                 
                 # simulations
                 results = []
-                start = get_state(model, simulator)
+                shuffle(stateactions)
                 for fork, stateaction in enumerate(stateactions):
-                    if fork>0:  set_state(start, model, simulator)
+                    # same start
+                    init_seeds(e*10055)
+                    model, loss_fn = load_pretrained(args, device)
+                    simulator = deepcopy(bk_simulator)
+                    gc.collect() ; torch.cuda.empty_cache()
 
                     # set simulator params
-                    action = stateaction[:4].astype(int)
-                    simulator.close = action[0]
-                    simulator.open  = action[1]
-                    simulator.dhot  = action[2]
-                    simulator.er_k  = action[3]
+                    configuration = stateaction[:4].astype(int)
+                    if str(configuration) not in used:
+                        simulator.close = configuration[0]
+                        simulator.open  = configuration[1]
+                        simulator.dhot  = configuration[2]
+                        simulator.er_k  = configuration[3]
 
-                    # simulate
-                    xt, h = simulate(simulator, x_)
-                    heuristics += h[::4]
+                        simulator.close = 1
+                        simulator.open  = 2
+                        simulator.dhot  = 3
+                        simulator.er_k  = 4
+                        # simulate
+                        xt, h = simulate(simulator, x_)
 
-                    # train NN  & get MaP
-                    map_ = train_eval_map(model, loss_fn, xt, y_, e*9000+step*100)
-                    tqdm.write(f'{curr_video} [{step},{fork}]--> {action.tolist()} : {map_}\n')
+                        # train NN  & get MaP
+                        map_ = train_eval_map(model, loss_fn, xt, y_, e*9000+step*100)
+                        tqdm.write(f'{curr_video} [{step},{fork}]--> {configuration.tolist()} : {map_}\n')
+                        used[str(configuration)] = (map_, stateaction, xt[-1], h, (xt[:8], y_[y_[:,0]<8]))
 
                     # save fork results
-                    results.append((get_state(model, simulator), map_, stateaction, xt[-1]))
+                    results.append(used[str(configuration)])
                 
                 # next step
-                results = sorted(results, key=lambda x: -x[1])
-                state, map_, stateaction, last_mm = results[0]
-                set_state(state, model, simulator)
+                results = sorted(results, key=lambda x: -x[0])
+                map_, stateaction, last_mm, heuristics, inputs = results[0]
 
                 # suboptimal solutions, promote diversity
                 candidates = []
-                for _, m, s, _ in results[1:]:
+                for m, s, _, _, _ in results[1:]:
                     sc1 = (0.1+m-map_)*10                       # score
                     sc2 = np.abs(stateaction[:4]-s[:4]).sum()   # diversity
                     candidates.append((s[:4], sc1 * sc2))
@@ -113,15 +121,15 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             data['params'].append(best_ever)
             data['other'].append(old_best[1:])
 
-            s = len(heuristics) // 100
+            s = max(1, len(heuristics) // 100)
             data['heuristics'].append([h.tolist() for h in heuristics[::s]])
 
-            _prev[0] = (xt[:8], y_[y_[:,0]<8]) if e%3!=2 else None
+            _prev[0] = inputs if e%2==1 else None
 
             # SAVE
             pd.DataFrame.from_dict(data).to_csv(save_csv)
-        except Exception as e: raise e
-        # except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
+        # except Exception as e: raise e
+        except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
     torch.save(model.state_dict(), save_path+'/model.pt')
@@ -162,16 +170,17 @@ def crossover(best, candidates):
     return res
 
 def train_eval_map(model, loss_fn, xt, y_, base_seed):
-    map_ = 0 ; fail = False ; i = 0 ; new =  0.01
+    map_ = 0 ; new =  0.01 ; allow_fail = 2 ; i = 0
     optimizer = get_optim(model)
-    while not fail or new > map_: # continue train if improvement
-        if new < map_: fail = True
+    while allow_fail or new > map_: # continue train if improvement
+        if new <= map_: allow_fail -= 1
         map_ = new ; i += 1
         new =  train_epoch(model, loss_fn, xt, y_, base_seed+i, optimizer)
         print('-->', new)
+    e1 = eval_epoch(model, xt, y_)
     new = train_epoch(model, loss_fn, xt, y_, base_seed-1, get_optim(model, 1))
-    print('->>', new)
-    return eval_epoch(model, xt, y_)
+    e2 = eval_epoch(model, xt, y_)
+    return (e1+e2)/2
 
 def train_epoch(model, loss_fn, xt, y_, base_seed, optimizer, scheduler=None, loops=4):
     if isinstance(optimizer, tuple):
@@ -184,12 +193,12 @@ def train_epoch(model, loss_fn, xt, y_, base_seed, optimizer, scheduler=None, lo
         oldseed = init_seeds(base_seed+ex)
         x,y = transform(xt.copy(), y_.clone(), train=True)
         x,y = x.to(device), y.to(device)
-        for _ in range(5):
-            i = max(0,int(np.random.rand()*(len(x)-32)))
-            x_tmp = x[i:i+32]
+        for _ in range(3):
+            i = max(0,int(np.random.rand()*(len(x)-64)))
+            x_tmp = x[i:i+64]
             y_tmp = y.clone()
             y_tmp[:, 0] -= i
-            y_tmp = y_tmp[(y_tmp[:,0]>=0) & (y_tmp[:,0]<32)]
+            y_tmp = y_tmp[(y_tmp[:,0]>=0) & (y_tmp[:,0]<64)]
 
             pred, y_p, y2_p = model(x_tmp)
             loss, _ = loss_fn(y_p, y_tmp, y2_p)
@@ -359,7 +368,7 @@ if __name__=='__main__':
     args = parser.parse_args()
     args.crop_svs=True
     args.n_iter = min(args.n_iter, 60)
-    save_path=f'{args.out_path}/plogs2/'
+    save_path=f'{args.out_path}/plogs3/'
     os.makedirs(save_path, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -380,5 +389,5 @@ if __name__=='__main__':
     print('creating policy')
     policy = FixPredictorV2(data)
     policy(np.zeros(4+10))
-    torch.save(policy, save_path + args.architecture + '_fix2.pt')
+    torch.save(policy, save_path + args.architecture + '_fix.pt')
 

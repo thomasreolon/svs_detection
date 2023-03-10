@@ -31,6 +31,7 @@ class FixPredictorV2():
     clf.fit(x, y)
     self.clf = clf
     self.params = p
+    print('targets:\n',p)
   
   def __call__(self, stateaction):
     x = np.nan_to_num(stateaction[4:], False, 0)
