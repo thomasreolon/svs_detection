@@ -8,8 +8,11 @@ from sklearn.svm import SVR
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn import svm
+from sklearn.cluster import KMeans
 
 ############################### POLICY v1 ###############################
+
+
 
 
 def clean_h(row):
@@ -17,6 +20,41 @@ def clean_h(row):
   return np.nan_to_num(np.array(heuristics), False, 0)
 def clean_p(row):
   return np.array(eval(row[1]['params'])[1])
+class FixPredictorV2():
+  def __init__(self, data) -> None:
+    data['best'] = list(map(clean_p, data.iterrows()))
+    data['he'] = list(map(clean_h, data.iterrows()))
+
+    x,y,p = self.make_dataset(data)
+    clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
+    print('training svm...')
+    clf.fit(x, y)
+    self.clf = clf
+    self.params = p
+  
+  def __call__(self, stateaction):
+    x = np.nan_to_num(stateaction[4:], False, 0)
+    i = self.clf.predict([x])[0]
+    p = self.params[i]
+    return 32 - np.abs(stateaction[:4]-p).sum()
+
+  def make_dataset(self, data):
+    x,y,p = [], [], []
+    for _, row in data.iterrows():
+      p.append(row['best'])
+
+    print('training kmeans...')
+    kmeans  = KMeans(n_clusters=3, random_state=1, n_init="auto").fit(p)
+    new_p = kmeans.cluster_centers_.copy()
+
+    for _, row in data.iterrows():
+      i = kmeans.predict([row['best']])[0]
+      x += [a for a in row['he']]
+      y += [i] * len(row['he'])
+
+    return x,y,new_p
+
+
 class FixPredictorV1():
   def __init__(self, data) -> None:
     data['best'] = list(map(clean_p, data.iterrows()))
@@ -37,8 +75,8 @@ class FixPredictorV1():
   def make_dataset(self, data):
     x,y,p = [], [], []
     for i, row in data.iterrows():
-      x += [a for a in row['he']]
-      y += [i] * len(row['he'])
+      x += [a for a in row['he'][::100]]
+      y += [i] * len(row['he'][::100])
       p.append(row['best'])
     return x,y,p
 

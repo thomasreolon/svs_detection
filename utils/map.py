@@ -114,7 +114,7 @@ def ap_per_class(tp, conf, pred_cls, target_cls, plot=False, save_dir='.', names
         tp = (r * nt).round()  # true positives
         mp, mr, map50, map = p.mean(), r.mean(), ap[:, 0].mean(), ap.mean()
     else:
-        mp, mr, map50, map = -1,-1,-1,-1
+        mp, mr, map50, map = [1]*4
     
     return mp, mr, map50, map
 

@@ -50,7 +50,7 @@ class RLearnSVS(StaticSVS):
     def get_stateactions(self, motion_map):
         # preprocess & get infos
         params = np.array([self.close, self.open, self.dhot, self.er_k],  dtype=np.float32)
-        s = 0.33 if self.training else 0.9
+        s = 0.65 if self.training else 0.9
         self.heuristics = self.heuristics*s + get_heuristics(motion_map)*(1-s)
         state = np.concatenate((params, self.heuristics / (1-s**(self.count+1))  ))
 
@@ -99,17 +99,23 @@ class RLearnSVS(StaticSVS):
                 (       0,          0,          0,      5-self.er_k), # high kernel
                 (       0,          0,          0,      2-self.er_k), # mid kernel
                 (       0,          0,          0,      0-self.er_k), # low kernel
-                (      0,          5,          5,      0),
-                (      0,          0,          5,      0),
-                ((      0,         -5,         -5,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,3-self.dhot,0)),
-                ((      0,         -5,          0,      0) if self.open>self.close+5  else (1-self.close, 2-self.open,0,0)),
+                (      0,          0,20-self.open,      0),
+                (      0,          0,10-self.open,      0),
+                (      0,          0, 3-self.open,      0),
+                (      0,9-self.open,10-self.open,      0),
+                (      0,2-self.open,          0,      0),
+                (1-self.close,     0,          0,      0),
+                (      0,          4,          4,      0),
+                (      0,          0,          4,      0),
+                ((      0,         -4,         -4,      0) if self.open>self.close+4  else (1-self.close, 2-self.open,3-self.dhot,0)),
+                ((      0,         -4,          0,      0) if self.open>self.close+4  else (1-self.close, 2-self.open,0,0)),
                 ]:
                 if self.training and a not in ac: ac.append(a)
         return ac
 
 
 def get_heuristics(motion_map):
-    n_wh = (motion_map>0).sum()
+    n_wh = (motion_map>0).sum() +1
     n_cc, _, stats, _ = cv2.connectedComponentsWithStats(motion_map, 5, cv2.CV_32S)
     if n_cc==1:
         a_st = 0

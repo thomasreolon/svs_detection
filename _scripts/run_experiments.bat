@@ -59,6 +59,8 @@
 @REM python main.py --exp_name comparison/policy_15fps2/77k_f2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
 @REM python main.py --exp_name comparison/policy_15fps2/77k_n2 --dont_cache --architecture opt_yolo77 --framerate 15   --simulator policy --policy plogs/opt_yolo77_n2.pt  --dataset people
 
-
-@REM python policy_learn.py --architecture blob --dataset MOT --n_iter 10
-python mainblob.py --exp_name comparison/policy_new/77k --dont_cache --architecture opt_yolo77 --pretrained plogs2/model.pt --framerate 4  --simulator policy --policy plogs2/opt_yolo77_fix.pt  --dataset people
+@REM policy v2
+@REM python policy_learn.py --architecture opt_yolo77 --n_iter 30  --pretrained comparison/small/77k/model.pt 
+@REM python main.py --exp_name comparison/policy_new/77k --dont_cache --architecture opt_yolo77 --pretrained plogs2/model.pt --framerate 4  --simulator policy --policy plogs2/opt_yolo77_fix.pt  --dataset people
+@REM python policy_learn.py --architecture opt_yolo7 --n_iter 1  --pretrained comparison/small/7k/model.pt 
+@REM python main.py --exp_name comparison/policy_new/7k --dont_cache --architecture opt_yolo7 --framerate 4  --simulator policy --policy plogs2/opt_yolo7_fix.pt  --dataset people

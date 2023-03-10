@@ -13,7 +13,7 @@ from utils.map import xywh2xyxy, update_map, get_map
 from models import build as build_model, ComputeLoss
 from models._head import Detect
 from simulators.rlearn import RLearnSVS
-from simulators.policies import FixPredictorV1
+from simulators.policies import FixPredictorV2
 
 def make_neural_net_csv(args, device, save_csv, save_path, data):
     # set up: model loss simulator
@@ -31,6 +31,7 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
         gc.collect() ; torch.cuda.empty_cache()
         try:
             curr_video, imgs, tgs, idx = next_video(args, idx)
+            print('---> info:', curr_video, len(imgs))
 
             # warmup simulator
             simulator.init_video(imgs[::3,:,:,0].mean(axis=0), imgs[::3,:,:,0].std(axis=0))
@@ -43,15 +44,23 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             # local search: 10 steps
             heuristics = []
             old_best = []
-            fail = False
-            best_ever = [-1, None]
-            for step in tqdm(range(10)):
+            fails_allowed = 2
+            best_ever = [-2, None]
+            t1 = time()
+            for step in tqdm(range(5)):
+                if time()-t1 > 60*20: break
                 # neighbours
-                if step == 0:
+                if   step == 0:
                     stateactions = get_starting_actions()
-                else: ## add other configs with evolution from last_good
+                elif step == 1: ## add other configs with evolution from last_good
+                    stateactions = simulator.get_stateactions(last_mm) + candidates
+                elif step == 2:
                     stateactions = simulator.get_stateactions(last_mm)
-                stateactions += crossover(candidates)
+                else:
+                    stateactions = simulator.get_stateactions(last_mm)[int(np.random.rand()*3)::3]
+                    stateactions += crossover(candidates[0], get_starting_actions())
+                if candidates is not None:
+                    stateactions += crossover(candidates[0], candidates[1:])
                 
                 # simulations
                 results = []
@@ -68,7 +77,7 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
 
                     # simulate
                     xt, h = simulate(simulator, x_)
-                    heuristics += h
+                    heuristics += h[::4]
 
                     # train NN  & get MaP
                     map_ = train_eval_map(model, loss_fn, xt, y_, e*9000+step*100)
@@ -93,25 +102,29 @@ def make_neural_net_csv(args, device, save_csv, save_path, data):
             
                 # best ever
                 if best_ever[0] < map_:
-                    old_best.append([best_ever[1], best_ever[0]])
+                    old_best.append([best_ever[0], best_ever[1]])
                     best_ever[0] = map_
                     best_ever[1] = stateaction[:4].astype(int).tolist()
-                elif fail:break
-                else: fail = True
+                elif not fails_allowed: break
+                else: fails_allowed -= 1
 
             data['idx'].append(idx)
             data['video'].append(curr_video)
             data['params'].append(best_ever)
             data['other'].append(old_best[1:])
-            data['heuristics'].append([h.tolist() for h in heuristics])
+
+            s = len(heuristics) // 100
+            data['heuristics'].append([h.tolist() for h in heuristics[::s]])
+
+            _prev[0] = (xt[:8], y_[y_[:,0]<8]) if e%3!=2 else None
 
             # SAVE
             pd.DataFrame.from_dict(data).to_csv(save_csv)
-        # except Exception as e: raise e
-        except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
+        except Exception as e: raise e
+        # except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
-    torch.save(model, save_path+'/model.pt')
+    torch.save(model.state_dict(), save_path+'/model.pt')
 
 def compute_map(gts, y_pred):
     gts = gts.cpu()
@@ -138,48 +151,109 @@ def get_starting_actions():
         np.array([1,12,13,5]),
     ]
 
-def crossover(candidates):
+def crossover(best, candidates):
     if candidates is None: return []
-    res = candidates[1:] + get_starting_actions()
-    for c in candidates[1:] + get_starting_actions():
+    res = []
+    for c in candidates:
         r = np.random.rand(4) **2
-        tmp = r*candidates[0] + c*(1-r)
-        res.append(tmp.round())
+        tmp = (r*best + c*(1-r)).round()
+        tmp[2] = max(tmp[2],tmp[1]+1)
+        res.append(tmp)
     return res
 
 def train_eval_map(model, loss_fn, xt, y_, base_seed):
-    map_ = 0 ; fail = False ; i = 0
+    map_ = 0 ; fail = False ; i = 0 ; new =  0.01
     optimizer = get_optim(model)
-    new =  train_epoch(model, loss_fn, xt, y_, base_seed, optimizer)
     while not fail or new > map_: # continue train if improvement
+        if new < map_: fail = True
         map_ = new ; i += 1
         new =  train_epoch(model, loss_fn, xt, y_, base_seed+i, optimizer)
-        if new < map_: fail = True
-    return map_
+        print('-->', new)
+    new = train_epoch(model, loss_fn, xt, y_, base_seed-1, get_optim(model, 1))
+    print('->>', new)
+    return eval_epoch(model, xt, y_)
 
-def train_epoch(model, loss_fn, xt, y_, base_seed, optimizer):
+def train_epoch(model, loss_fn, xt, y_, base_seed, optimizer, scheduler=None, loops=4):
+    if isinstance(optimizer, tuple):
+        scheduler = optimizer[1]
+        optimizer = optimizer[0]
+        loops = 10
     # fit NN
     model.train()
-    for ex in range(10):
+    for ex in range(loops):
         oldseed = init_seeds(base_seed+ex)
         x,y = transform(xt.copy(), y_.clone(), train=True)
         x,y = x.to(device), y.to(device)
-        pred, y_p, y2_p = model(x)
-        loss, _ = loss_fn(y_p, y, y2_p)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-        optimizer.step()
-        optimizer.zero_grad()
+        for _ in range(5):
+            i = max(0,int(np.random.rand()*(len(x)-32)))
+            x_tmp = x[i:i+32]
+            y_tmp = y.clone()
+            y_tmp[:, 0] -= i
+            y_tmp = y_tmp[(y_tmp[:,0]>=0) & (y_tmp[:,0]<32)]
+
+            pred, y_p, y2_p = model(x_tmp)
+            loss, _ = loss_fn(y_p, y_tmp, y2_p)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+            optimizer.step()
+            optimizer.zero_grad()
+        if scheduler is not None: scheduler.step()
         init_seeds(oldseed)
 
     # score similar to MaP
     model.eval()
     with torch.no_grad():
         x,y = transform(xt.copy(), y_.clone(), train=False)
+        # import cv2 # show gt
+        # print(' showing',len(x),'/', len(xt),'images')
+        # for j in range(len(x)):
+        #     pred = (y[y[:,0]==j,2:].clone().cpu() * torch.tensor([160,128,160,128])).int()
+        #     tmp = ((x[j:j+1].clone()*.9+.1)*255).permute(0,2,3,1).cpu().numpy()[0]
+        #     for (xc,yc,w,h) in pred.tolist():
+        #         x1,y1,x2,y2 = xc-w//2, yc-h//2, xc+w//2, yc+h//2
+        #         tmp[y1:y2, x1:x1+2] = 128
+        #         tmp[y1:y2, x2:x2-2] = 128
+        #         tmp[y1:y1+2, x1:x2] = 128
+        #         tmp[y2:y2-2, x1:x2] = 128
+        #     cv2.imshow('tmp',np.uint8(tmp))
+        #     cv2.waitKey()
+
         x,y = x.to(device), y.to(device)
         pred, y_p, y2_p = model(x)
         map_ = compute_map(y, pred)
     return map_
+
+_prev = [None]
+def eval_epoch(model, xt, y_,):
+    # score similar to MaP
+    tmp = init_seeds(333)
+
+    model.eval()
+    with torch.no_grad():
+        # Map over test set
+        x,y = transform(xt.copy(), y_.clone(), train=False)
+        x,y = x.to(device), y.to(device)
+        pred, _, _ = model(x)
+        map1 = compute_map(y, pred)
+
+        # Map over all
+        xt = (((torch.from_numpy(np.stack(xt))/255) -.1)/.9).permute(0,3,1,2)
+        x,y = xt.to(device), y_.to(device)
+        pred, _, _ = model(x)
+        map2 = compute_map(y, pred)
+
+        # Map prev video
+        map_ = map1*0.4 + map2*0.6
+        if _prev[0] is not None:
+            xt = (((torch.from_numpy(np.stack(_prev[0][0]))/255) -.1)/.9).permute(0,3,1,2)
+            x,y = xt.to(device), _prev[0][1].to(device)
+            pred, _, _ = model(x)
+            map3 = compute_map(y, pred)
+            map_ = map_*0.8 + map3*0.2
+
+    init_seeds(tmp)
+    return map_
+
 
 
 def simulate(simulator, imgs):
@@ -198,7 +272,7 @@ def get_state(model, simulator):
 
 def set_state(s, model, simulator):
     if model is not None:
-        model.load_state_dict(s[0])
+        model.load_state_dict({k:v.clone() for k,v in s[0].items()} )
     simulator.er_k, simulator.close, simulator.open, simulator.dhot, simulator.count = s[1][:-2]
     simulator.Threshold_H = s[1][-2].copy()
     simulator.Threshold_L = s[1][-1].copy()
@@ -209,22 +283,21 @@ def next_video(args, v):
     infos, imgs, tgs, _ =  ds[v % len(ds)] # select by video
     tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
 
-    # randomness in video (especially for how train/test are divided)
-    i = int(np.random.rand()*15)
-    tgs[:, 0] -= i
-    imgs = imgs[i:]
-
     # to numpy
     imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
     imgs = np.uint8(imgs)
     curr_video = infos[0].split(';')[0] +':'+ infos[0].split(';')[-1]
     return curr_video+f':{args.framerate}', imgs, tgs, v
 
-def get_optim(model):
-    return torch.optim.AdamW([
-        {'params': model.model[1:].parameters(), 'lr': args.lr},
-        {'params': model.model[0].parameters()}
-    ], lr=args.lr/3, betas=(0.92, 0.999))
+def get_optim(model, v=0):
+    if v == 0:
+        return torch.optim.AdamW([
+            {'params': model.model[1:].parameters(), 'lr': args.lr},
+            {'params': model.model[0].parameters()}
+        ], lr=args.lr/3, betas=(0.92, 0.999))
+    else:
+        opt = torch.optim.SGD(model.parameters(), lr=2e-5, momentum=0.9)
+        return  opt, torch.optim.lr_scheduler.CosineAnnealingLR(opt, 10)
 
 def load_pretrained(args, device='cuda'):
     model = build_model(args.architecture).to(device)
@@ -241,8 +314,8 @@ def load_pretrained(args, device='cuda'):
 def transform(svss, gt_boxes, train=True):
     imgs = [] ; gts = [] ; c = 0
     for i, svs in enumerate(svss):
-        if train     and i%15>10: continue # [0..10] train
-        if not train and i%15!=13: continue # [13] test
+        if train     and i>len(svss)*0.75: continue 
+        if not train and i<min(len(svss)-10, len(svss)*0.85): continue 
         
         # update idx gt
         gt = gt_boxes[gt_boxes[:,0]==i]
@@ -285,6 +358,7 @@ if __name__=='__main__':
     parser = get_args_parser()
     args = parser.parse_args()
     args.crop_svs=True
+    args.n_iter = min(args.n_iter, 60)
     save_path=f'{args.out_path}/plogs2/'
     os.makedirs(save_path, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -304,7 +378,7 @@ if __name__=='__main__':
     data = pd.read_csv(csv_path)
 
     print('creating policy')
-    policy = FixPredictorV1(data)
+    policy = FixPredictorV2(data)
     policy(np.zeros(4+10))
-    torch.save(policy, save_path + args.architecture + '_fix.pt')
+    torch.save(policy, save_path + args.architecture + '_fix2.pt')
 
