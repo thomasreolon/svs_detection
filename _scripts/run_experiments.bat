@@ -46,12 +46,35 @@
 @REM python main.py --exp_name comparison/policy/77k_n1 --dont_cache --architecture opt_yolo77 --framerate 4   --simulator policy --policy plogs/opt_yolo77_n1.pt  --dataset people
 
 
-@REM @REM quantize + policy
-@REM python main.py --exp_name comparison/final/77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people 
-@REM python main.py --exp_name comparison/final/7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people 
-@REM python main.py --exp_name comparison/final/s1  --dont_cache --architecture mini       --quantize 8bit --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people 
-@REM python main.py --exp_name comparison/final/s2  --dont_cache --architecture mini2      --quantize 8bit --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
-@REM python main.py --exp_name comparison/final/mlp --dont_cache --architecture mlp2       --quantize binary --framerate 4  --simulator policy --policy plogs/opt_yolo77_f2.pt  --dataset people
+@REM quantize + policy
+python main.py --exp_name comparison/final_v4/f8_104k --dont_cache --architecture yolophi --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/f8_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/f8_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/f8_mlp --dont_cache --architecture mlp2       --quantize binary --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people
+
+python main.py --exp_name comparison/final_v4/ex_104k --dont_cache --architecture yolophi   --quantize 8bit --framerate 4  --simulator policy --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/ex_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policy --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/ex_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 4  --simulator policy --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people 
+python main.py --exp_name comparison/final_v4/ex_mlp --dont_cache --architecture mlp2       --quantize binary --framerate 4  --simulator policy --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people
+
+
+python policy_learn.py --architecture opt_yolo77 --n_iter 15  --pretrained comparison/small/77k/model.pt   --dataset people --framerate 15 --reset
+python main.py --exp_name comparison/fr15_v4/ex_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 15  --simulator policy --policy plogs3/plogs3/opt_yolo77_nnex.pt  --dataset people 
+python main.py --exp_name comparison/fr15_v4/f8_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 15  --simulator policy --policy plogs3/plogs3/opt_yolo77_fix8.pt  --dataset people 
+python main.py --exp_name comparison/fr15_v4/st_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 15  --dataset people 
+python main.py --exp_name comparison/fr15_v4/ex_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 15  --simulator policy --policy plogs3/plogs3/opt_yolo77_nnex.pt  --dataset people 
+python main.py --exp_name comparison/fr15_v4/f8_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 15  --simulator policy --policy plogs3/plogs3/opt_yolo77_fix8.pt  --dataset people 
+python main.py --exp_name comparison/fr15_v4/st_7k --dont_cache --architecture opt_yolo7 --quantize 8bit --framerate 15  --dataset people 
+
+python policy_learn.py --architecture opt_yolo7 --n_iter 15  --pretrained comparison/small/7k/model.pt   --dataset people --mhi --reset
+python main.py --exp_name comparison/mhi_v4/ex_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policymhi --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people 
+python main.py --exp_name comparison/mhi_v4/f8_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policymhi --policy plogs3/plogs3/opt_yolo7_fix8.pt  --dataset people 
+python main.py --exp_name comparison/mhi_v4/st_77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --dataset people 
+python main.py --exp_name comparison/mhi_v4/ex_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 4  --simulator policymhi --policy plogs3/plogs3/opt_yolo7_nnex.pt  --dataset people 
+python main.py --exp_name comparison/mhi_v4/f8_7k  --dont_cache --architecture opt_yolo7  --quantize 8bit --framerate 4  --simulator policymhi --policy plogs3/plogs3/opt_yolo7_fix8.pt  --dataset people 
+python main.py --exp_name comparison/mhi_v4/st_7k --dont_cache --architecture opt_yolo7 --quantize 8bit --framerate 4  --dataset people 
+
+
 
 @REM @REM policy NN fr 15
 @REM python policy_learn2.py --architecture opt_yolo77 --pretrained comparison/small/77k/model.pt --dataset people --framerate 15 --reset
@@ -62,14 +85,17 @@
 @REM policy v2
 @REM python policy_learn.py --architecture opt_yolo7 --n_iter 30  --pretrained comparison/small/7k/model.pt   --dataset MOT
 
-python main.py --exp_name comparison/policy_v4/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix1.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_f3 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix3.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_f8 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_nnxs --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnxs.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_nns --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nns.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_nnm --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nms.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_nnl --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_lxs.pt  --dataset people 
-python main.py --exp_name comparison/policy_v4/77k_nnxl --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_lnxs.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_f1 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix1.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_f3 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix3.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_f8 --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix8.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_nnxs --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnxs.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_nns --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nns.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_nnm --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnm.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_nnl --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnl.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_nnxl --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnxl.pt  --dataset people 
+
+@REM python main.py --exp_name comparison/policy_v4/77k_nnex --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_nnex.pt  --dataset people 
+@REM python main.py --exp_name comparison/policy_v4/77k_fixwb --dont_cache --architecture opt_yolo77 --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fixwb.pt  --dataset people 
 
 
 @REM python main.py --exp_name comparison/final_v3/77k --dont_cache --architecture opt_yolo77 --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix.pt  --dataset people 
@@ -77,7 +103,6 @@ python main.py --exp_name comparison/policy_v4/77k_nnxl --dont_cache --architect
 @REM python main.py --exp_name comparison/final_v3/s1  --dont_cache --architecture mini       --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix.pt  --dataset people 
 @REM python main.py --exp_name comparison/final_v3/s2  --dont_cache --architecture mini2      --quantize 8bit --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix.pt  --dataset people
 @REM python main.py --exp_name comparison/final_v3/mlp --dont_cache --architecture mlp2       --quantize binary --framerate 4  --simulator policy --policy plogs3/opt_yolo7_fix.pt  --dataset people
-
 
 @REM python policy_learn.py --architecture opt_yolo77 --n_iter 40  --pretrained comparison/small/77k/model.pt 
 @REM python main.py --exp_name comparison/policy_new/77k --dont_cache --architecture opt_yolo77 --pretrained plogs3/model.pt --framerate 4  --simulator policy --policy plogs3/opt_yolo77_fix.pt  --dataset people

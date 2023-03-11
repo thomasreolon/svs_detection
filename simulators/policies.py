@@ -12,9 +12,6 @@ from sklearn.cluster import KMeans
 
 ############################### POLICY v3-4 ###############################
 
-
-
-
 def clean_h(row):
   heuristics = eval(row[1]['heuristics'].replace('nan', 'np.nan'))
   return np.nan_to_num(np.array(heuristics), False, 0)
@@ -33,7 +30,6 @@ class FixPredictorV2():
 
     x,y,p = self.make_dataset(data, n_clust)
     clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
-    print('training svm...')
     if n_clust>1:
       clf.fit(x, y)
     else:
@@ -61,43 +57,25 @@ class FixPredictorV2():
     x,y,p = [], [], []
     for _, row in data.iterrows():
       p += [a for a in row['top']]
-
-    print('training kmeans...')
     kmeans  = KMeans(n_clusters=n_clust, random_state=1, n_init="auto").fit(p)
     new_p = kmeans.cluster_centers_.copy()
-
     for _, row in data.iterrows():
       i = kmeans.predict([row['best']])[0]
       x += [a for a in row['he']]
       y += [i] * len(row['he'])
-
     return x,y,new_p
 
 
+def clean_m(row):
+  return np.array(eval(row[1]['params'])[0])
 class FixPredictorV1():
   def __init__(self, data) -> None:
-    data['best'] = list(map(clean_p, data.iterrows()))
-    data['he'] = list(map(clean_h, data.iterrows()))
-
-    x,y,p = self.make_dataset(data)
-    clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
-    clf.fit(x, y)
-    self.clf = clf
-    self.params = p
-  
+    data['param'] = list(map(clean_p, data.iterrows()))
+    data['map'] = list(map(clean_m, data.iterrows()))
+    worst = data[data['map']==data['map'].min()].iloc[0]
+    self.target = np.array(worst['param'])
   def __call__(self, stateaction):
-    x = np.nan_to_num(stateaction[4:], False, 0)
-    i = self.clf.predict([x])[0]
-    p = self.params[i]
-    return 32 - np.abs(stateaction[:4]-p).sum()
-
-  def make_dataset(self, data):
-    x,y,p = [], [], []
-    for i, row in data.iterrows():
-      x += [a for a in row['he'][::100]]
-      y += [i] * len(row['he'][::100])
-      p.append(row['best'])
-    return x,y,p
+    return 32 - np.abs(stateaction[:4]-self.target).sum() # the closer to target the highest the score
 
 
 def clean_h2(row):
@@ -106,7 +84,7 @@ def clean_h2(row):
 def clean_p3(row):
   return np.array(eval(row[1]['params']))
 class NNPredictorV1():
-  sizes = ['xs','s','m','l','xl']
+  sizes = ['ex','xs','s','m','l','xl']
   def __init__(self, data, size='s') -> None:
     data['par'] = list(map(clean_p3, data.iterrows()))
     data['he'] = list(map(clean_h2, data.iterrows()))
@@ -153,8 +131,21 @@ class NNPredictorV1():
     return self.net(x).item()
 
   def sample(self, x_, y_, dev, bs=256):
-    idxs = (len(x_) * np.random.rand(bs)).astype(int).tolist()
-    return x_[idxs].to(dev).view(-1,14), y_[idxs].to(dev).view(-1,1)
+    idxs = (len(x_) * np.random.rand(int(bs*0.9))).astype(int).tolist()
+    x,y  = x_[idxs].view(-1,14), y_[idxs].view(-1,1)
+    x2,y2 = self.bad_samples(bs-len(idxs))
+    return torch.cat((x,x2),0).to(dev), torch.cat((y,y2),0).to(dev)
+
+  def bad_samples(self, n):
+    """we want our network to predict bad scores for configurations that makes no sense"""
+    y = torch.tensor([-2]*n)[:,None]
+    x = (torch.rand(n,14)-0.05)*30
+    x[:,1] *= 1.3
+    x[:,2] *= 3
+    x[:,4:] /= 10
+    bad = (x - torch.tensor([[5,5,5,2,1,1,1,1,1,1,1,1,1,1]])).abs().sum(dim=1) > 30
+    x[~bad, 2] += 100
+    return x,y
 
   def make_dataset(self, data):
     x_ = [] ; y_ = []
@@ -229,7 +220,26 @@ class NNPredictorV1():
         nn.ReLU(),
         nn.Linear(2,1),
       )
+    elif size=='ex':
+      net = ExperimNN(n_in)
     return net.float()
+
+class ExperimNN(nn.Module):
+  def __init__(self, n_in) -> None:
+    super().__init__()
+    self.lin1 = nn.Linear(n_in, 16)
+    self.lin2 = nn.Linear(32, 4)
+    self.lin3 = nn.Linear(4, 1)
+    self.act  = nn.ReLU(True)
+    self.t_b  = nn.Parameter(torch.ones(1,4,4)*3+torch.rand(1,4,4)*2, True)
+    self.t_w  = nn.Parameter(torch.rand(1,4,4), True)
+  def forward(self, x):
+    params = x[:, :4, None]
+    dist = (params - self.t_b)**2 * self.t_w
+    y = self.lin1(x)
+    y = torch.cat((y, dist.flatten(1)), dim=1)
+    return self.lin3(self.act(self.lin2(y)))
+    
 
 
 ############################### POLICY v2 ############################### 

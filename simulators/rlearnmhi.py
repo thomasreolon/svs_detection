@@ -3,15 +3,15 @@ import cv2
 import torch
 import os
 
-from .forensor_sim import StaticSVS
+from .mhi import MHISVS
 
 """
 Dynamic Simulator
 perameters change with a previously learned policy
 """
 
-class RLearnSVS(StaticSVS):
-    name = 'policy'
+class MHIRLearnSVS(MHISVS):
+    name = 'policymhi'
     def __init__(self, d_close=1, d_open=3, d_hot=5, svs_ker=0, policy='', verbose=True, train=False):
         # Algorithm parameters
         self.kernels = self.get_kernels()
@@ -125,6 +125,9 @@ class RLearnSVS(StaticSVS):
 
 
 def get_heuristics(motion_map):
+    motion_map = motion_map.copy()
+    motion_map[motion_map < 100] = 0
+    motion_map[motion_map > 100] = 255
     n_wh = (motion_map>0).sum() +1
     n_cc, _, stats, _ = cv2.connectedComponentsWithStats(motion_map, 5, cv2.CV_32S)
     if n_cc==1:

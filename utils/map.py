@@ -1,12 +1,38 @@
 import torch
 import numpy as np
-from models._head import box_iou, xywh2xyxy
+from models._head import box_iou, xywh2xyxy, Detect
 
+
+def compute_map(gts, y_pred):
+    """ computes MaP from a batch of images
+
+    Arguments:
+        gts     Array[N,6]          --> groundtruths from dataset
+        labels  list( Array[Mi,5] ) --> first element returned by detection head when mode = eval()
+    Returns:
+        float MaP
+    """
+
+    gts = gts.cpu()
+    if not isinstance(y_pred, torch.Tensor):
+        y_pred = [torch.cat((torch.from_numpy(x),torch.ones(x.shape[0],1),torch.zeros(x.shape[0],1)),dim=1) for x in y_pred]
+    else:
+        y_pred = y_pred.cpu()
+        y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
+    stats = []
+    for i,pred in enumerate(y_pred):
+        gt = gts[gts[:,0]==i,1:]
+        pred = pred/torch.tensor([160.,128,160,128,1,1])
+        pred[:,:4] = xywh2xyxy(pred[:,:4])
+        gt[:,1:]   = xywh2xyxy(gt[:,1:])
+        update_map(pred , gt, stats)
+    map = get_map(stats) [-1]
+    return map
 
 def get_map(stats):
+    """first collect the stats with UPDATE_MAP then use this function to compute the MaP"""
     stats = [torch.cat(x, 0).cpu().numpy() for x in zip(*stats)]  # to numpy
     return ap_per_class(*stats) if len(stats) else [0]*4
-
 
 def update_map(detections, labels, stats):
     """ from yolo

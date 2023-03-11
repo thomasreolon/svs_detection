@@ -40,5 +40,6 @@ def get_args_parser():
     # Policy
     parser.add_argument('--n_iter', default=500, type=int)
     parser.add_argument('--reset', action='store_true')
+    parser.add_argument('--mhi', action='store_true')
 
     return parser

@@ -4,18 +4,13 @@ import os, gc
 import numpy as np
 from copy import deepcopy
 from time import time
-
 import pandas as pd
-from sklearn import linear_model
-from collections import defaultdict
-import torch.nn as nn
 
 from configs.defaults import get_args_parser
 from datasets.simulation_ds import SimulationFastDataset
 from utils import init_seeds, StatsLogger
-from utils.map import xywh2xyxy, update_map, get_map
+from utils.map import compute_map
 from models import build as build_model, ComputeLoss
-from models._head import Detect
 from simulators import RLearnSVS
 from simulators.policies import FixPredictor, NNPredictor, SVMPredictor
 
@@ -246,23 +241,6 @@ def make_blobdetector_csv(args, save_path, data):
         except Exception as e: logger.log(f'FAIL:{curr_video} : {e}\n')
         pbar.update(1)
         if time()-t0 > 60*60*8: break
-
-def compute_map(gts, y_pred):
-    gts = gts.cpu()
-    if not isinstance(y_pred, torch.Tensor):
-        y_pred = [torch.cat((torch.from_numpy(x),torch.ones(x.shape[0],1),torch.zeros(x.shape[0],1)),dim=1) for x in y_pred]
-    else:
-        y_pred = y_pred.cpu()
-        y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
-    stats = []
-    for i,pred in enumerate(y_pred):
-        gt = gts[gts[:,0]==i,1:]
-        pred = pred/torch.tensor([160.,128,160,128,1,1])
-        pred[:,:4] = xywh2xyxy(pred[:,:4])
-        gt[:,1:]   = xywh2xyxy(gt[:,1:])
-        update_map(pred , gt, stats)
-    map = get_map(stats) [-1]
-    return map
 
 
 def simulate(simulator, imgs):

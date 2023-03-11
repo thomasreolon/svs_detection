@@ -28,4 +28,4 @@ class MHISVS(StaticSVS):
         motion_map = np.maximum(motion_map, self.prev_mmap//2)
         self.prev_mmap = motion_map
 
-        return motion_map
+        return np.uint8(motion_map)

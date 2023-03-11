@@ -10,15 +10,16 @@ from random import shuffle
 from configs.defaults import get_args_parser
 from datasets.simulation_ds import SimulationFastDataset
 from utils import init_seeds, StatsLogger
-from utils.map import xywh2xyxy, update_map, get_map
+from utils.map import compute_map
 from models import build as build_model, ComputeLoss
 from models._head import Detect
 from simulators.rlearn import RLearnSVS
-from simulators.policies import FixPredictorV2, NNPredictorV1
+from simulators.rlearnmhi import MHIRLearnSVS
+from simulators.policies import FixPredictorV2, NNPredictorV1, FixPredictorV1
 
 def make_neural_net_csv(args, device, save_csv, save_csv2, save_path, data, data2):
     # set up
-    simulator = RLearnSVS(train=True)
+    simulator = MHIRLearnSVS(train=True) if args.mhi else RLearnSVS(train=True)
     logger = StatsLogger(args)
 
     # global variables: v-->num_video; t0->time ; idx->run_number
@@ -131,27 +132,10 @@ def make_neural_net_csv(args, device, save_csv, save_csv2, save_path, data, data
             # SAVE
             pd.DataFrame.from_dict(data).to_csv(save_csv)
             pd.DataFrame.from_dict(data2).to_csv(save_csv2)
-        # except Exception as e: raise e
-        except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
+        except Exception as e: raise e
+        # except Exception as e: print('FAIL',e); logger.log(f'FAIL:{curr_video} : {e}')
         pbar.update(1)
         if time()-t0 > 60*60*8: break#stop after 8h
-
-def compute_map(gts, y_pred):
-    gts = gts.cpu()
-    if not isinstance(y_pred, torch.Tensor):
-        y_pred = [torch.cat((torch.from_numpy(x),torch.ones(x.shape[0],1),torch.zeros(x.shape[0],1)),dim=1) for x in y_pred]
-    else:
-        y_pred = y_pred.cpu()
-        y_pred = Detect.postprocess(y_pred, 0.4, 0.4)
-    stats = []
-    for i,pred in enumerate(y_pred):
-        gt = gts[gts[:,0]==i,1:]
-        pred = pred/torch.tensor([160.,128,160,128,1,1])
-        pred[:,:4] = xywh2xyxy(pred[:,:4])
-        gt[:,1:]   = xywh2xyxy(gt[:,1:])
-        update_map(pred , gt, stats)
-    map = get_map(stats) [-1]
-    return map
 
 def get_starting_actions():
     return [
@@ -268,8 +252,6 @@ def eval_epoch(model, xt, y_,):
     init_seeds(tmp)
     return map_
 
-
-
 def simulate(simulator, imgs):
     h,x = [], []
     for img in imgs:
@@ -277,31 +259,21 @@ def simulate(simulator, imgs):
         h.append(simulator.heuristics)
     return np.stack(x), h
 
-
-def get_state(model, simulator):
-    m = {k:v.detach().cpu().clone() for k,v in model.state_dict().items()} if model is not None else None
-    return [m, (simulator.er_k, simulator.close,
-                   simulator.open, simulator.dhot, simulator.count,
-                   simulator.Threshold_H.copy(), simulator.Threshold_L.copy())]
-
-def set_state(s, model, simulator):
-    if model is not None:
-        model.load_state_dict({k:v.clone() for k,v in s[0].items()} )
-    simulator.er_k, simulator.close, simulator.open, simulator.dhot, simulator.count = s[1][:-2]
-    simulator.Threshold_H = s[1][-2].copy()
-    simulator.Threshold_L = s[1][-1].copy()
-
-def next_video(args, v):
-    v += 1
+_vids = []
+def next_video(args, idx):
+    global _vids
+    idx += 1
     ds = SimulationFastDataset(args, 999)  # select by framerate
-    infos, imgs, tgs, _ =  ds[v % len(ds)] # select by video
+    if len(_vids)==0: _vids += [0,1,2] +sorted(list(range(len(ds))), key=lambda x:np.random.rand())
+    v = _vids[idx % len(_vids)]
+    infos, imgs, tgs, _ =  ds[v] # select by video
     tgs = tgs.view(-1,6) # b, cls, xc, yc, w, h
 
     # to numpy
     imgs = ((imgs*.9+.1)*255).permute(0,2,3,1) # B,H,W,C
     imgs = np.uint8(imgs)
     curr_video = infos[0].split(';')[0] +':'+ infos[0].split(';')[-1]
-    return curr_video+f':{args.framerate}', imgs, tgs, v
+    return curr_video+f':{args.framerate}', imgs, tgs, idx
 
 def get_optim(model, v=0):
     if v == 0:
@@ -412,3 +384,9 @@ if __name__=='__main__':
         policy(np.zeros(4+10))
         torch.save(policy, save_path + args.architecture + f'_nn{size}.pt')
 
+    # learn policy: worst case best configuration
+    data = pd.read_csv(csv_path)
+    print('creating policy LS')
+    policy = FixPredictorV1(data)
+    policy(np.zeros(4+10))
+    torch.save(policy, save_path + args.architecture + f'_fixwb.pt')

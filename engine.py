@@ -3,7 +3,8 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 import utils.debugging as D
-from policy_learn2 import compute_map
+
+from models._head import Detect
 
 def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
     model.train()
@@ -37,50 +38,6 @@ def train_one_epoch(tr_loader, model, loss_fn, optimizer, device, epoch, debug):
         D.flush_debug()
     return text, start
 
-def train_one_epochmap(tr_loader, model, loss_fn, optimizer, device, epoch, debug, map_=0):
-    model.train()
-    loss_mean = np.zeros((5))
-    pbar = tqdm(tr_loader, leave=False)
-    maps = []
-    for i, (_, imgs, gt_boxes, _) in enumerate(pbar):
-        D.should_debug(i in {0,4} and debug, f'{epoch}-{i}')
-        D.debug_visualize_gt(imgs, gt_boxes)
-
-        # Forward
-        imgs = imgs.to(device) ; gt_boxes = gt_boxes.to(device)
-        _, y, count = model(imgs)
-
-
-        # Loss
-        loss, l_item = loss_fn(y, gt_boxes, count)
-        if map_>0:
-            with torch.no_grad():
-                model.eval()
-                yp, _, _ = model(imgs)
-                model.train()
-            m = compute_map(gt_boxes, yp)
-            maps.append(m)
-            loss = loss * max(1e-3, 2*(map_ - m))
-        l_item = l_item.detach()
-        lo = l_item[:,0].mean() ; lb = l_item[l_item[:,1]>=0,1].mean() ; lc = l_item[l_item[:,1]>=0,1].mean()
-        check_not_nan(lo, lb, lc)
-
-        # Step
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-        optimizer.step()
-        optimizer.zero_grad()
-
-        # Log
-        avgmap = sum(maps) / len(maps) if len(maps) else -1
-        loss_mean += (loss.item(), lo.item(), lb.item(), lc.item(), 1)
-        text  = f"e[{epoch: 5d}]: loss_tot={loss_mean[0]/loss_mean[4]:.3e} map={avgmap} lobj={loss_mean[1]/loss_mean[4]:.3e} lbox={loss_mean[2]/loss_mean[4]:.3e}, lcnt={loss_mean[3]/loss_mean[4]:.3e}"
-        if i==0: start = 'e[start]'+text[8:]
-        pbar.set_description(text)
-        D.flush_debug()
-    return text, start, avgmap
-
-
 def check_not_nan(*a):
     tmp = [torch.isnan(x).sum()>0 for x in a]
     if any(tmp):
@@ -104,7 +61,7 @@ def test_epoch(args, dataset, model, loss_fn, is_train, logger, device, debug):
         preds, y, counts = model(imgs)
         _, l_items = loss_fn(y, tgs, counts)
         l_items = l_items.detach()
-        preds = model.model[-1].postprocess(preds, args.detect_thresh, args.nms_iou)
+        preds = Detect.postprocess(preds, args.detect_thresh, args.nms_iou)
 
         # Log Stats
         obj_heat = y[0][:,0,:,:,4].cpu() # b,a,h,w,6 to b,h,w
