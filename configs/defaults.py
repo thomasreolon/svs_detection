@@ -17,7 +17,7 @@ def get_args_parser():
     parser.add_argument('--quantize', default='no', type=str,                   help='no, 8bit, binary')
 
     # Configuration Setting
-    parser.add_argument('--framerate', default=4, type=float)
+    parser.add_argument('--framerate', default=4, type=int)
     parser.add_argument('--svs_close', default=1, type=int)
     parser.add_argument('--svs_open', default=3, type=int)
     parser.add_argument('--svs_hot', default=5, type=int)
@@ -31,7 +31,7 @@ def get_args_parser():
     # Eval Settings
     parser.add_argument('--out_path', default='E:/dataset/_outputs', type=str)
     parser.add_argument('--exp_name', default='', type=str)
-    parser.add_argument('--detect_thresh', default=0.5, type=float)
+    parser.add_argument('--detect_thresh', default=0.45, type=float)
     parser.add_argument('--nms_iou', default=0.3, type=float)                   # use higher for streets23
     parser.add_argument('--debug', action='store_true',                         help='generates visuals to understand training')
     parser.add_argument('--skip_train', action='store_true',                    help='tries to load a pretrained model')

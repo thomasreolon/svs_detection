@@ -345,7 +345,7 @@ if __name__=='__main__':
     args = parser.parse_args()
     args.crop_svs=True
     args.n_iter = min(args.n_iter, 60)
-    save_path=f'{args.out_path}/plogs3/'
+    save_path=f'{args.out_path}/plogs3_fr{args.framerate}/'
     os.makedirs(save_path, exist_ok=True)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

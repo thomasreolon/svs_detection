@@ -9,6 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn import svm
 from sklearn.cluster import KMeans
+from sklearn.ensemble import IsolationForest
 
 ############################### POLICY v3-4 ###############################
 
@@ -18,51 +19,79 @@ def clean_h(row):
 def clean_p(row):
   return np.array(eval(row[1]['params'])[1])
 def clean_p2(row):
-  p1 = eval(row[1]['params'])[1]
-  p2 = [a[1] for a in eval(row[1]['other'])]
+  map_, p1 = eval(row[1]['params'])
+  p2 = [a[1] for a in eval(row[1]['other']) if a[0]+0.05>map_]
   return np.array([p1, p1] + p2 if len(p2) else [p1, p1])
 def dummy(x): return [np.array([0])]
 class FixPredictorV2():
   def __init__(self, data, n_clust=3) -> None:
+    # preprocess data
     data['best'] = list(map(clean_p, data.iterrows()))
     data['top'] = list(map(clean_p2, data.iterrows()))
     data['he'] = list(map(clean_h, data.iterrows()))
 
+    # M*heuristics, M*target_parameters, N*parameters
     x,y,p = self.make_dataset(data, n_clust)
     clf = svm.SVC(decision_function_shape='ovr', kernel='rbf')
     if n_clust>1:
       clf.fit(x, y)
     else:
-      clf.decision_function = dummy
+      clf.decision_function = dummy # don't need classifier if just 1 class
     self.clf = clf
     self.params = p
-    self.prev_p = [np.zeros(len(p)), 0]
+    self.prev_p = [np.zeros(len(p)), 0, np.zeros(4)]
     print('targets:\n',p)
   
   def reset(self):
     self.prev_p[0] *= 0
     self.prev_p[1]  = 0
+    self.prev_p[2] *= 0
 
   def __call__(self, stateaction):
+    # update probability to belong to each cluster
     x = np.nan_to_num(stateaction[4:], False, 0) # heuristics
-    prob_v = np.exp(2*self.clf.decision_function([x])[0]) # get video probabilities
-    self.prev_p[0] += (prob_v / prob_v.sum())   # update means pt.1
-    self.prev_p[1] += 1                         # update means pt.2
+    prob_v = np.exp(self.clf.decision_function([x])[0]) # get video probabilities
+    p = (prob_v / prob_v.sum())   # probability to belong to cluster 
+    self.prev_p[0] += p           # update means pt.1
+    self.prev_p[1] += 1           # update means pt.2
 
+    # new target = weighted sum of clustered parameters
     prob_v = self.prev_p[0] / self.prev_p[1] # average prob through time
     target = (self.params * prob_v.reshape(-1,1)).sum(axis=0) # weighted sum
+
+    # # velocity
+    # future = (self.params * p.reshape(-1,1)).sum(axis=0)
+    # self.prev_p[2] = 0.75*self.prev_p[2] + 0.25*(future - target)
+    # target += self.prev_p[2]
+
     return 32 - np.abs(stateaction[:4]-target).sum() # the closer to target the highest the score
 
   def make_dataset(self, data, n_clust):
     x,y,p = [], [], []
+    used = set()
+    # get top configurations
     for _, row in data.iterrows():
       p += [a for a in row['top']]
+
+    # remove outliers
+    p = np.array(p)
+    inliers = IsolationForest(contamination=0.15, max_samples=100, random_state=0).fit_predict(p)
+    p = p[inliers>0]
+
+    # find N clusters of configurations
     kmeans  = KMeans(n_clusters=n_clust, random_state=1, n_init="auto").fit(p)
     new_p = kmeans.cluster_centers_.copy()
     for _, row in data.iterrows():
       i = kmeans.predict([row['best']])[0]
       x += [a for a in row['he']]
       y += [i] * len(row['he'])
+      used.add(i)
+    
+    # assure there ara as many classes in the SMV as there are clusters
+    for i in range(n_clust):
+      if i not in used:
+        x.append(x[-i-1]*-1)
+        y.append(i)
     return x,y,new_p
 
 

@@ -33,7 +33,7 @@ class RLearnSVS(StaticSVS):
     def init_video(self, init_threshold, std):
         """initial values for the threshold (background image without any moving object)"""
         super().init_video(init_threshold, std)
-        # self.prev_state = None
+        if self.verbose: print('new video')
         self.count = 0
         self.heuristics = np.zeros(10)
         if hasattr(self.pred_reward, 'reset'):
