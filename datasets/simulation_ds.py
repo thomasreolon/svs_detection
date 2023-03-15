@@ -4,7 +4,9 @@ import pickle
 
 from .mot_svs_cache import FastDataset, get_configs, MOTDataset, get_cache_path
 
-"""must use batch size = 1"""
+"""must use batch size = 1
+    Wrapper around mot_svs_cache.FastDataset --> returns greyscale batched by video
+"""
 
 class SimulationFastDataset(FastDataset):
     """does not return the whole dataset, just the initial frames for each video"""

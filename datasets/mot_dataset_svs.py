@@ -16,6 +16,12 @@ from .transforms import (
     gettransforms_post
 )
 
+"""
+Dataset that
+--> reads annotations for a group of videos
+--> simulates them with a defined simulator
+--> (pickles the processed data to speed up future runs)
+"""
 
 class MOTDataset(torch.utils.data.Dataset):
     """returns simulated frames of forensor & BBoxes"""

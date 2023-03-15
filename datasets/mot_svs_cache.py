@@ -5,6 +5,11 @@ from tqdm import tqdm
 
 from .mot_dataset_svs import MOTDataset
 
+"""
+Wrapper around mot_dataset_svs.MOTDataset
+--> defines groups of videos (in get_configs())
+--> returns a FastDataset that merges the group of videos for that configuration
+"""
 
 class FastDataset(torch.utils.data.Dataset):
     """Wrapper To Load Multiple Dataset Faster"""

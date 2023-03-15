@@ -12,6 +12,13 @@ import torch
 from datasets.transforms import augment_color, get_mask, letterbox, gettransforms_post
 from .map import update_map, get_map
 
+"""
+--> logging to txt
+--> computes metrics
+--> generate videos
+"""
+
+
 class StatsLogger():
     VIS_SIZE = (640, 800)
     def __init__(self, args) -> None:

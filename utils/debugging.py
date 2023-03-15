@@ -1,6 +1,11 @@
 import os
 import cv2, numpy as np
-import torch
+
+"""
+Util functions called in engine.py and _loss.py
+--> when argument --debug is passed generates some additional visualizations
+"""
+
 
 _GLOBAL_STATUS = [False, None, None, None]
 

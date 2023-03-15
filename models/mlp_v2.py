@@ -5,6 +5,10 @@ from ._head import Detect
 from ._blocks import MLP, Conv
 from .yolov5.models.yolo import check_anchor_order
 
+"""
+just another bad model
+"""
+
 class BlockMLPv2(nn.Module):
     def __init__(self, ch_in, ch_out, mlp_size=5):
         super().__init__()

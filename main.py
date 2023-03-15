@@ -12,7 +12,7 @@ import utils.debugging as D
 
 def main(args, device):
     # Setup Model & Loss
-    ch_in = 1 if 'cat' not in args.simulator else 2 # mhicatgrey gives 2 channels images
+    ch_in = 1 if 'cat' not in args.simulator else 2 # --simulator mhicatgrey gives 2 channels images
     model = build_model(args.architecture, ch_in).to(device)
     loss_fn = ComputeLoss(model)
 

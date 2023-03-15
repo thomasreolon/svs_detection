@@ -1,3 +1,4 @@
+import sys, pathlib ; sys.path.append(pathlib.Path(__file__).parent.resolve().__str__() + '/..')
 import torch
 import os
 
