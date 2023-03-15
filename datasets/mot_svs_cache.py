@@ -136,8 +136,15 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':args.triggering,   
                 },
             })
-        # if dataset=='all' or dataset == 'cars':
-        #     raise Exception('not supported yet')
+        if dataset=='all' or dataset == 'cars':
+            configs.update({
+                'cars':{
+                    'select_video':['crossing'],
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':True,   
+                }})
 
     else:
         # test Datasets
@@ -182,9 +189,16 @@ def get_configs(args, is_train, aug_affine, dataset):
                     'triggering':args.triggering,    
                 }
             })
-        # if dataset=='all' or dataset == 'cars':
-        #     raise Exception('not supported yet')
-
+        if dataset=='all' or dataset == 'cars':
+            configs.update({
+                'cars':{
+                    'select_video':['crossing'],
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
+                    'aug_affine':False,
+                    'triggering':True,   
+                }})
+        
     # General Settings
     for v in configs.values():
         v.update({

@@ -83,6 +83,7 @@ class MOTDataset(torch.utils.data.Dataset):
             # drops most frames without BB to improve detections
             self.data = [x for x in self.data if self.allow_empty(x[2])]
 
+
     def __len__(self):
         return self.data.__len__()
     
