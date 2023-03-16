@@ -17,11 +17,11 @@ def build(model_name, ch_in = 1):
         return YoloNet8(ch_in)
     if model_name == 'phiyolo': # Baseline
         return YoloNetPhi(ch_in) 
-    if model_name == 'phisimple1':
+    if model_name == 'phismall1':
         return MiniYoloPHI(ch_in)
-    if model_name == 'phisimple2':
+    if model_name == 'phismall2':
         return MiniYoloPHI2(ch_in)
-    if model_name == 'phisimple3':
+    if model_name == 'phismall3':
         return MiniYoloPHI3(ch_in)
     if model_name == 'phiyolo7K':
         return build_special(ch_in, ['yolophi', 0.15, 0.1, 0.05, 8, 0.82, False, True])

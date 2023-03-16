@@ -225,21 +225,21 @@ def eval_epoch(model, xt, y_,):
 
     model.eval()
     with torch.no_grad():
-        # Map over test set
+        # Map over test set --> base
         x,y = transform(xt.copy(), y_.clone(), train=False)
         x,y = x.to(device), y.to(device)
         pred, _, _ = model(x)
         map1 = compute_map(y, pred)
 
-        # Map over all
+        # Map over all --> if test frames don't have detection use the overall map + how overfittable it is
         xt = (((torch.from_numpy(np.stack(xt))/255) -.1)/.9).permute(0,3,1,2)
         x,y = xt.to(device), y_.to(device)
         pred, _, _ = model(x)
         map2 = compute_map(y, pred)
         print('=>', map1, map2, end='')
 
-        # Map prev video
-        map_ = map1*0.4 + map2*0.6
+        # Map prev video  + parameters work well also with previous video
+        map_ = map1*0.7 + map2*0.3
         if _prev[0] is not None:
             xt = (((torch.from_numpy(np.stack(_prev[0][0]))/255) -.1)/.9).permute(0,3,1,2)
             x,y = xt.to(device), _prev[0][1].to(device)

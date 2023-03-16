@@ -4,20 +4,18 @@ python main.py      --exp_name comparison/base/4fr_ --architecture phiyolo --fra
 python mainblob.py  --exp_name comparison/base/blob --architecture blob    --framerate 4  --simulator static --dataset people 
 python main.py      --exp_name comparison/base/mhi --architecture phiyolo --framerate 4  --simulator mhi     --dataset people 
 python main.py      --exp_name comparison/base/grmhi --architecture phiyolo --framerate 4  --simulator mhicatgrey --dataset people 
-
 @REM baseline-triggering
 python main.py      --exp_name comparison/base/4fr_tr --architecture phiyolo --framerate 4  --simulator static --dataset streets23 --triggering --pretrained  comparison/base/4fr_/model.pt --epochs 20
-
-@REM fps: 
+@REM baseline-fps: 
 python main.py --exp_name comparison/base/15fr_ --architecture phiyolo --framerate 15   --simulator static --dataset people 
 python main.py --exp_name comparison/base/1fr_  --architecture phiyolo --framerate 1   --simulator static --dataset people 
 
 @REM models
 python main.py --exp_name comparison/small/77k --architecture phiyolo77K --framerate 4   --simulator static --dataset people 
 python main.py --exp_name comparison/small/7k  --architecture phiyolo7K  --framerate 4   --simulator static --dataset people 
-python main.py --exp_name comparison/small/s1  --architecture phisimple1 --framerate 4   --simulator static --dataset people 
-python main.py --exp_name comparison/small/s2  --architecture phisimple2 --framerate 4   --simulator static --dataset people
-python main.py --exp_name comparison/small/s3  --architecture phisimple3 --framerate 4   --simulator static --dataset people
+python main.py --exp_name comparison/small/s1  --architecture phismall1 --framerate 4   --simulator static --dataset people 
+python main.py --exp_name comparison/small/s2  --architecture phismall2 --framerate 4   --simulator static --dataset people
+python main.py --exp_name comparison/small/s3  --architecture phismall3 --framerate 4   --simulator static --dataset people
 python main.py --exp_name comparison/small/mlp --architecture mlp2       --framerate 4   --simulator static --dataset people
 python main.py --exp_name comparison/small/v8  --architecture yolo8      --framerate 4   --simulator static --dataset people
 
