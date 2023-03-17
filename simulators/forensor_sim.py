@@ -1,10 +1,3 @@
-######################################
-# FORENSOR SIMULATOR
-# Modified Thomas Reolon 2023
-# . . . . . . . . . . . . . . . . 
-# Copyright Massimo Gottardi 2018
-######################################
-
 import numpy as np
 import cv2
 
