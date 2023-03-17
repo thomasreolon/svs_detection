@@ -55,8 +55,9 @@ def make_neural_net_csv(args, device, save_csv, save_csv2, save_path, data, data
                     stateactions = get_starting_actions()
                 elif step == 1: ## add other configs with evolution from last_good
                     stateactions = simulator.get_stateactions(last_mm) + candidates
+                    stateactions += crossover(candidates[0], get_starting_actions())
                 elif step == 2:
-                    stateactions = simulator.get_stateactions(last_mm)
+                    stateactions = simulator.get_stateactions(last_mm) + candidates
                 else:
                     stateactions = simulator.get_stateactions(last_mm)[int(np.random.rand()*3)::3]
                     stateactions += crossover(candidates[0], get_starting_actions())
@@ -141,8 +142,11 @@ def get_starting_actions():
     return [
         np.array([1,2,3,2]),
         np.array([1,3,4,5]),
+        np.array([1,2,7,1]),
         np.array([2,4,11,2]),
-        np.array([1,12,13,5]),
+        np.array([1,12,13,3]),
+        np.array([1,3,20,4]),
+        np.array([1,12,30,5]),
     ]
 
 def crossover(best, candidates):

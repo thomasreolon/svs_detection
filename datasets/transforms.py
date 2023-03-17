@@ -158,6 +158,8 @@ class MotRandomShift():
         else:
             if self.test: r = 0.7
             r = 1+r*2       # 1/3-100 % of the image  (args.use_crop)
+            if r*h>imgs[0].size[1] or r*w>imgs[0].size[0]:
+                r = min(imgs[0].size[1]/h, imgs[0].size[0]/w) 
         
         # deterministic or random
         if self.test:

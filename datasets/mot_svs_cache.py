@@ -144,12 +144,21 @@ def get_configs(args, is_train, aug_affine, dataset):
         if dataset=='all' or dataset == 'cars':
             configs.update({
                 'cars':{
-                    'select_video':['crossing'],
+                    'select_video':['a_'],
                     'is_train':True,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                     'aug_affine':aug_affine,
                     'triggering':True,   
-                }})
+                },
+                'cars-dark':{
+                    'select_video':['a_'],
+                    'is_train':True,  
+                    'aug_color':{'brightness':0.14, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                    'aug_affine':aug_affine,
+                    'triggering':True,   
+                }
+            
+            })
 
     else:
         # test Datasets
@@ -197,12 +206,20 @@ def get_configs(args, is_train, aug_affine, dataset):
         if dataset=='all' or dataset == 'cars':
             configs.update({
                 'cars':{
-                    'select_video':['crossing'],
+                    'select_video':['a_'],
                     'is_train':False,  
                     'aug_color':{'brightness':0.5, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.5, 'noise':None}, 
                     'aug_affine':False,
                     'triggering':True,   
-                }})
+                },
+                'cars-dark':{
+                    'select_video':['a_pd'],
+                    'is_train':False,  
+                    'aug_color':{'brightness':0.14, 'contrast':0.5, 'saturation':0.5, 'sharpness':0.5, 'hue':0.5, 'gamma':0.2, 'noise':None}, 
+                    'aug_affine':False,
+                    'triggering':True,   
+                }
+            })
         
     # General Settings
     for v in configs.values():
