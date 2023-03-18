@@ -28,6 +28,7 @@ class RLearnSVS(StaticSVS):
         if os.path.isfile(policy_weights):
             print(f'loaded policy: {policy_weights[-20:]}')
             policy = torch.load(policy_weights)
+        elif policy_weights!='': print('Policy NotFound',policy_weights); exit(0)
         return policy
 
     def init_video(self, init_threshold, std):
