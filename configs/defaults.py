@@ -13,7 +13,7 @@ def get_args_parser():
     parser.add_argument('--architecture', default='phiyolo', type=str,          help='mlp, mlp2, yolo5, yolophi, yolo8')
     parser.add_argument('--simulator', default='static', type=str,              help='static, simple, policy')
     parser.add_argument('--pretrained', default='<auto>', type=str,             help='path to checkpoint, auto will search in output+expname path')
-    parser.add_argument('--policy', default='', type=str,                 help='path to policy, used only if simulator==policy')
+    parser.add_argument('--policy', default='', type=str,                       help='path to policy, used only if simulator==policy')
     parser.add_argument('--quantize', default='no', type=str,                   help='no, 8bit, binary')
 
     # Configuration Setting
@@ -26,7 +26,7 @@ def get_args_parser():
     # Training Setting
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--lr', default=3e-3, type=float)
-    parser.add_argument('--epochs', default=120, type=int)
+    parser.add_argument('--epochs', default=40, type=int)
 
     # Eval Settings
     parser.add_argument('--out_path', default='E:/dataset/_outputs', type=str)

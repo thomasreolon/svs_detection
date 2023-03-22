@@ -59,6 +59,17 @@ print(np.array(anchors).round().astype(int))
  [40 85]]
 """
 
+""" w cars
+[[  4   7]
+ [  6  14]
+ [ 14  13]
+ [  9  22]
+ [ 13  32]
+ [ 31  29]
+ [ 21  50]
+ [ 32  80]
+ [ 55 111]]
+"""
 
 print('-- K=6')
 kmeans  = KMeans(n_clusters=6, random_state=1, n_init="auto").fit(boxes)

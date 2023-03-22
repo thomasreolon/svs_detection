@@ -10,12 +10,12 @@ This repo contains:
 - the code to train the  CNN (architecture from YOLO & PhiNet) 
 - the code to optimize the CNN's architecture
 
-<!-- ### Example of 3D scene reconstruction
+### Example of 3D scene reconstruction
 Starting from 8 views of the same scene, the model reconstructs the scene:
 
-![image](https://media.giphy.com/media/WrxRcc5mnexksBeHyd/giphy.gif) -->
+![image](https://media.giphy.com/media/GdyxC4fwuIUanCbqqa/giphy.gif)
 
-<!-- table with MaP -->
+table with MaP
 
 ## Set Up
 
@@ -25,7 +25,9 @@ Starting from 8 views of the same scene, the model reconstructs the scene:
 
 ##### Download the dataset
 
-... [upload GDrive TODO]
+dataset : https://drive.google.com/file/d/1QsHU9vBjj26ZLf_g7w6fozb1OTNEvO19
+
+The dataset contains videos from: **MOT17**, **MOT**, **Streets23** (and poorly annotated highways webcams)
 
 ##### Reproduce results
 
@@ -44,8 +46,16 @@ policy_learn.py --> finds the best configurations for the simulator & generates 
 _scripts/** --> other less important things
 ```
 
+### Detection with motion maps
+Starting from 8 views of the same scene, the model reconstructs the scene:
+
+![image](https://media.giphy.com/media/32Nn2n0e26Hmuc3eOl/giphy.gif)
+![image](https://media.giphy.com/media/h4AZ6RsxUMD0BuBQwo/giphy.gif)
+
 
 ## Aknowledgements
 
-Parts of the code are from [yolov5](https://github.com/ultralytics/yolov5) and [phinets](https://github.com/fpaissan/micromind).
+[yolov5](https://github.com/ultralytics/yolov5): base architecture
+
+[phinets](https://github.com/fpaissan/micromind): detector backbone
 
