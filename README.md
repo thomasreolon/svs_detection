@@ -10,24 +10,28 @@ This repo contains:
 - the code to train the  CNN (architecture from YOLO & PhiNet) 
 - the code to optimize the CNN's architecture
 
-### Example of 3D scene reconstruction
-Starting from 8 views of the same scene, the model reconstructs the scene:
+### Example of Detection with motion maps and light neural network
 
 ![image](https://media.giphy.com/media/GdyxC4fwuIUanCbqqa/giphy.gif)
 
-table with MaP
+<!-- table with MaP -->
 
 ## Set Up
 
-##### Install environment requirements
-
-... [requirements.txt TODO]
 
 ##### Download the dataset
 
 dataset : https://drive.google.com/file/d/1QsHU9vBjj26ZLf_g7w6fozb1OTNEvO19
 
 The dataset contains videos from: **MOT17**, **MOT**, **Streets23** (and poorly annotated highways webcams)
+
+After having unzipped the files, update mot_path inside configs/defaults.py to
+
+##### Install environment requirements
+
+```sh
+pip install -r requirements.txt
+```
 
 ##### Reproduce results
 
