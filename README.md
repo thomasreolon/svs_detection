@@ -50,11 +50,11 @@ policy_learn.py --> finds the best configurations for the simulator & generates 
 _scripts/** --> other less important things
 ```
 
-### Detection with motion maps
-Starting from 8 views of the same scene, the model reconstructs the scene:
+### Both pedestrians and cars
 
 ![image](https://media.giphy.com/media/32Nn2n0e26Hmuc3eOl/giphy.gif)
 
+detection on low resolution images: 120x160
 
 ![image](https://media.giphy.com/media/h4AZ6RsxUMD0BuBQwo/giphy.gif)
 
