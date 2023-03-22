@@ -54,6 +54,8 @@ _scripts/** --> other less important things
 Starting from 8 views of the same scene, the model reconstructs the scene:
 
 ![image](https://media.giphy.com/media/32Nn2n0e26Hmuc3eOl/giphy.gif)
+
+
 ![image](https://media.giphy.com/media/h4AZ6RsxUMD0BuBQwo/giphy.gif)
 
 
