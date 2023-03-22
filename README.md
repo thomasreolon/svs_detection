@@ -2,7 +2,7 @@
 
 # Detection and Tracking Using Low Power Devices
 
-<!-- ##### :speech_balloon: A report explaining the project can be found here: [report.pdf](report.pdf) :speech_balloon: -->
+##### :speech_balloon: A report explaining the project can be found here: [report.pdf](report.pdf) :speech_balloon:
 
 Codebase for my Master Thesis at unitn: optimizing a motion map simulation algorithm and a CNN to perform object detection with low energy comsumption.
 This repo contains:
